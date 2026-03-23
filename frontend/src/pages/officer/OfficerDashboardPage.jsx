@@ -5,7 +5,7 @@ import {
     Users, Timer, Building2, Activity,
 } from 'lucide-react'
 
-const API_BASE = 'http://localhost:3000'
+const API_BASE = 'http://10.10.64.148:3000'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

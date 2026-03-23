@@ -279,4 +279,44 @@ router.post('/:id/vouch', authenticateToken, async (req, res, next) => {
     }
 });
 
+// =============================================================================
+// PATCH /api/reports/:id/status
+// =============================================================================
+// Allows administrators to update the status of a report.
+// =============================================================================
+router.patch('/:id/status', authenticateToken, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!status) {
+            return res.status(400).json({ status: 'error', message: 'Status is required.' });
+        }
+
+        const allowedStatuses = ['pending', 'in_progress', 'resolved', 'rejected'];
+        if (!allowedStatuses.includes(status.toLowerCase())) {
+            return res.status(400).json({ status: 'error', message: 'Invalid status.' });
+        }
+
+        const { rows } = await query(
+            'UPDATE reports SET status = $1 WHERE id = $2 RETURNING *',
+            [status.toLowerCase(), id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ status: 'error', message: 'Report not found.' });
+        }
+
+        return res.status(200).json({
+            status: 'ok',
+            message: 'Status updated.',
+            report: rows[0]
+        });
+
+    } catch (err) {
+        console.error('[Reports] PATCH /api/reports/:id/status error:', err.message);
+        next(err);
+    }
+});
+
 module.exports = router;

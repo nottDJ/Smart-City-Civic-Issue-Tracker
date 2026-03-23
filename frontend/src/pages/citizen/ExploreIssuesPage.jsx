@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
@@ -7,6 +7,22 @@ import { UserCircle2 } from 'lucide-react';
 export default function ExploreIssuesPage() {
     const [issues, setIssues] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [activeCategory, setActiveCategory] = useState('all');
+    const [sortBy, setSortBy] = useState('newest');
+
+    const CATEGORIES = [
+        { label: 'All', value: 'all' },
+        { label: 'Pothole / Road Damage', value: 'pothole' },
+        { label: 'Streetlight Outage', value: 'street_light' },
+        { label: 'Garbage / Sanitation', value: 'garbage' },
+        { label: 'Water Leakage / Pipe Burst', value: 'water_leak' },
+        { label: 'Encroachment', value: 'encroachment' },
+        { label: 'Sewage Overflow', value: 'sewage' },
+        { label: 'Illegal Construction', value: 'illegal_construction' },
+        { label: 'Noise Pollution', value: 'noise_pollution' },
+        { label: 'Fallen Tree / Branch', value: 'tree_hazard' },
+        { label: 'Other', value: 'other' }
+    ];
 
     useEffect(() => {
         fetchIssues();
@@ -14,7 +30,7 @@ export default function ExploreIssuesPage() {
 
     const fetchIssues = async () => {
         try {
-            const response = await fetch('http://localhost:3000/api/reports');
+            const response = await fetch('http://10.10.64.148:3000/api/reports');
             const data = await response.json();
 
             if (data && data.status === 'ok' && Array.isArray(data.reports)) {
@@ -48,7 +64,7 @@ export default function ExploreIssuesPage() {
         ));
 
         try {
-            const response = await fetch(`http://localhost:3000/api/reports/${id}/vouch`, {
+            const response = await fetch(`http://10.10.64.148:3000/api/reports/${id}/vouch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -73,6 +89,22 @@ export default function ExploreIssuesPage() {
             toast.error('Network error. Could not record vouch.');
         }
     };
+
+    const filteredAndSortedIssues = useMemo(() => {
+        let result = issues;
+        if (activeCategory !== 'all') {
+            result = result.filter(issue => issue.category === activeCategory);
+        }
+        
+        return [...result].sort((a, b) => {
+            if (sortBy === 'newest') {
+                return new Date(b.created_at) - new Date(a.created_at);
+            } else if (sortBy === 'priority') {
+                return b.vouch_count - a.vouch_count;
+            }
+            return 0;
+        });
+    }, [issues, activeCategory, sortBy]);
 
     if (isLoading) {
         return (
@@ -138,17 +170,72 @@ export default function ExploreIssuesPage() {
 
     return (
         <div className="min-h-screen bg-[#FAFAFA] pb-20 overflow-x-hidden">
-            <div className="bg-[#FAFAFA]/80 backdrop-blur-2xl px-6 py-6 sticky top-0 z-10 border-b border-black/[0.03]">
-                <div className="max-w-lg mx-auto flex items-center justify-between">
-                    <h1 className="text-3xl font-black text-slate-900 tracking-[-0.04em]">Local Issues</h1>
-                    <Link to="/citizen/profile" className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-500 hover:text-indigo-600 hover:border-indigo-200 shadow-sm transition-all active:scale-95">
-                        <UserCircle2 size={22} />
-                    </Link>
+            <div className="bg-[#FAFAFA]/80 backdrop-blur-2xl sticky top-0 z-10 border-b border-black/[0.03]">
+                <div className="px-6 py-4">
+                    <div className="max-w-lg mx-auto flex items-center justify-between">
+                        <h1 className="text-3xl font-black text-slate-900 tracking-[-0.04em]">Local Issues</h1>
+                        <Link to="/citizen/profile" className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-500 hover:text-indigo-600 hover:border-indigo-200 shadow-sm transition-all active:scale-95">
+                            <UserCircle2 size={22} />
+                        </Link>
+                    </div>
+                </div>
+                
+                <div className="px-6 pb-4">
+                    <div className="max-w-lg mx-auto flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                        <div className="flex w-full overflow-x-auto gap-2 pb-1 sm:pb-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                            {CATEGORIES.map(category => (
+                                <button
+                                    key={category.value}
+                                    onClick={() => setActiveCategory(category.value)}
+                                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-all ${
+                                        activeCategory === category.value
+                                            ? 'bg-indigo-600 text-white shadow-md'
+                                            : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-200 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    {category.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="shrink-0 flex items-center self-end sm:self-auto">
+                            <select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value)}
+                                className="appearance-none bg-white border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all cursor-pointer shadow-sm"
+                                style={{
+                                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                                    backgroundRepeat: 'no-repeat',
+                                    backgroundPosition: 'right 0.5rem center',
+                                    backgroundSize: '1.2em'
+                                }}
+                            >
+                                <option value="newest">Newest First</option>
+                                <option value="priority">Highest Priority</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div className="p-4 space-y-6 max-w-lg mx-auto pt-6">
-                {issues.map((issue, idx) => (
+                {filteredAndSortedIssues.length === 0 && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="text-center py-12 bg-white rounded-[2rem] border border-black/[0.03] shadow-[0_8px_30px_rgb(0,0,0,0.03)]"
+                    >
+                        <div className="text-4xl mb-4">🔍</div>
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">No matching issues</h3>
+                        <p className="text-slate-500 font-medium text-sm">Try clearing your filters.</p>
+                        <button
+                            onClick={() => { setActiveCategory('all'); setSortBy('newest'); }}
+                            className="mt-6 px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors active:scale-95"
+                        >
+                            Reset Filters
+                        </button>
+                    </motion.div>
+                )}
+                {filteredAndSortedIssues.map((issue, idx) => (
                     <motion.div
                         key={issue.id}
                         initial={{ opacity: 0, y: 60 }}
@@ -161,7 +248,7 @@ export default function ExploreIssuesPage() {
                         {issue.multimedia_urls && issue.multimedia_urls[0] && (
                             <div className="overflow-hidden w-full h-56 relative bg-slate-100">
                                 <motion.img
-                                    src={`http://localhost:3000${issue.multimedia_urls[0]}`}
+                                    src={`http://10.10.64.148:3000${issue.multimedia_urls[0]}`}
                                     alt="Issue evidence"
                                     whileHover={{ scale: 1.05 }}
                                     transition={{ duration: 0.6, ease: "easeOut" }}
@@ -173,7 +260,7 @@ export default function ExploreIssuesPage() {
                         <div className="p-6">
                             <div className="flex justify-between items-center mb-4">
                                 <span className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-900 bg-slate-100 px-3 py-1.5 rounded-full">
-                                    {issue.category}
+                                    {CATEGORIES.find(c => c.value === issue.category)?.label || issue.category}
                                 </span>
                                 <span className="text-[11px] font-bold tracking-wide text-slate-400 uppercase">
                                     {new Date(issue.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

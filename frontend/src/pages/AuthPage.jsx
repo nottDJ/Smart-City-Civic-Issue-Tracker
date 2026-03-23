@@ -30,7 +30,7 @@ export default function AuthPage() {
         setError('');
 
         const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-        const url = `http://localhost:3000${endpoint}`;
+        const url = `http://10.10.64.148:3000${endpoint}`;
 
         try {
             const res = await fetch(url, {

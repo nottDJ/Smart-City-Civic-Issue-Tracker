@@ -24,15 +24,8 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// Allow requests from the Vite dev server (port 5173) and any origin specified
-// in CORS_ORIGIN env var (set to your production domain in prod).
-app.use(cors({
-    origin: process.env.CORS_ORIGIN
-        ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-        : ['http://localhost:5173', 'http://127.0.0.1:5173'],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+// Allow all origins temporarily for local network testing
+app.use(cors({ origin: '*' }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -120,12 +113,12 @@ const start = async () => {
         console.log('[Server] Testing database connection…');
         await testConnection();
 
-        app.listen(PORT, () => {
+        app.listen(PORT, '0.0.0.0', () => {
             console.log(`\n┌─────────────────────────────────────────────────┐`);
             console.log(`│  🏙  Civic Issue Reporting System — Backend API  │`);
-            console.log(`│  Listening on http://localhost:${PORT}               │`);
+            console.log(`│  Listening on http://0.0.0.0:${PORT}               │`);
             console.log(`│  Environment : ${(process.env.NODE_ENV || 'development').padEnd(32)}│`);
-            console.log(`│  Health check: http://localhost:${PORT}/api/health    │`);
+            console.log(`│  Health check: http://127.0.0.1:${PORT}/api/health    │`);
             console.log(`└─────────────────────────────────────────────────┘\n`);
         });
     } catch (err) {

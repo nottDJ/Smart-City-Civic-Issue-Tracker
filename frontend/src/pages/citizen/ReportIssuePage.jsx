@@ -1,13 +1,45 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import {
     Camera, MapPin, ChevronDown, Send,
     Loader2, AlertCircle, CheckCircle2,
-    X, FileAudio, FileVideo,
+    X, FileAudio, FileVideo, Search
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
-const API_BASE = 'http://localhost:3000'
+// Fix for default Leaflet marker icons in React
+let DefaultIcon = L.icon({
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+const API_BASE = 'http://10.10.64.148:3000'
+
+function LocationPicker({ setLocation }) {
+    useMapEvents({
+        click(e) {
+            setLocation({ lat: e.latlng.lat.toFixed(5), lng: e.latlng.lng.toFixed(5) })
+        }
+    })
+    return null
+}
+
+function MapFlyTo({ location }) {
+    const map = useMap()
+    useEffect(() => {
+        if (location) {
+            map.flyTo([location.lat, location.lng], 15, { animate: true })
+        }
+    }, [location, map])
+    return null
+}
 
 const CATEGORIES = [
     { label: 'Pothole / Road Damage', value: 'pothole' },
@@ -31,7 +63,8 @@ export default function ReportIssuePage() {
     // ── Media state ────────────────────────────────────────────────────────────
     const [mediaFile, setMediaFile] = useState(null)
     const [mediaPreview, setMediaPreview] = useState(null)
-    const fileInputRef = useRef(null)
+    const cameraInputRef = useRef(null)
+    const galleryInputRef = useRef(null)
 
     function handleFileChange(e) {
         const file = e.target.files?.[0]
@@ -43,22 +76,54 @@ export default function ReportIssuePage() {
     function clearMedia() {
         setMediaFile(null)
         setMediaPreview(null)
-        if (fileInputRef.current) fileInputRef.current.value = ''
+        if (cameraInputRef.current) cameraInputRef.current.value = ''
+        if (galleryInputRef.current) galleryInputRef.current.value = ''
     }
 
     // ── GPS state ──────────────────────────────────────────────────────────────
     const [location, setLocation] = useState(null)
     const [locationLoading, setLocationLoading] = useState(false)
     const [locationError, setLocationError] = useState(null)
+    const [showMap, setShowMap] = useState(false)
+    const [addressInput, setAddressInput] = useState('')
+    const [isSearching, setIsSearching] = useState(false)
+
+    async function handleManualSearch(e) {
+        if (e) e.preventDefault()
+        if (!addressInput.trim()) return
+
+        setIsSearching(true)
+        try {
+            const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(addressInput))
+            const data = await res.json()
+
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat).toFixed(5)
+                const lng = parseFloat(data[0].lon).toFixed(5)
+                setLocation({ lat, lng })
+                setShowMap(true)
+                toast.success("Location found!")
+            } else {
+                toast.error("Address not found. Try being more specific.")
+            }
+        } catch (error) {
+            toast.error("Network error while searching.")
+        } finally {
+            setIsSearching(false)
+        }
+    }
 
     function fetchGPS() {
         if (!navigator.geolocation) {
             setLocationError('Geolocation is not supported by this browser.')
+            setShowMap(true)
+            toast.error("Auto-GPS blocked. Please tap your location on the map.")
             return
         }
         setLocationLoading(true)
         setLocationError(null)
         setLocation(null)
+        setShowMap(false)
 
         navigator.geolocation.getCurrentPosition(
             (pos) => {
@@ -76,6 +141,8 @@ export default function ReportIssuePage() {
                 }
                 setLocationError(messages[err.code] ?? 'An unknown error occurred.')
                 setLocationLoading(false)
+                toast.error("Auto-GPS blocked. Please tap your location on the map.")
+                setShowMap(true)
             },
             { enableHighAccuracy: true, timeout: 10000 }
         )
@@ -306,20 +373,38 @@ export default function ReportIssuePage() {
                                         </button>
                                     </div>
                                 ) : (
-                                    <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:bg-slate-50 transition-colors group relative cursor-pointer overflow-hidden leading-tight">
-                                        <div className="mx-auto w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:scale-110 group-hover:text-slate-600 transition-all mb-3 text-2xl">
-                                            📷
-                                        </div>
-                                        <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Capture or Upload</span>
-                                        <p className="text-xs text-slate-400 font-medium mt-1">Photos, videos, or audio</p>
+                                    <div className="flex gap-3">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => cameraInputRef.current?.click()} 
+                                            className="flex-1 border-2 border-slate-200 rounded-2xl p-4 text-center hover:bg-slate-50 transition-colors group relative cursor-pointer font-bold text-slate-700 active:scale-95"
+                                        >
+                                            <div className="text-2xl mb-1 group-hover:scale-110 transition-transform">📷</div>
+                                            <span className="text-sm">Take Photo</span>
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => galleryInputRef.current?.click()} 
+                                            className="flex-1 border-2 border-slate-200 rounded-2xl p-4 text-center hover:bg-slate-50 transition-colors group relative cursor-pointer font-bold text-slate-700 active:scale-95"
+                                        >
+                                            <div className="text-2xl mb-1 group-hover:scale-110 transition-transform">📁</div>
+                                            <span className="text-sm">Upload Gallery</span>
+                                        </button>
                                     </div>
                                 )}
 
                                 <input
-                                    ref={fileInputRef}
+                                    ref={cameraInputRef}
                                     type="file"
-                                    accept="image/*,video/*,audio/*"
+                                    accept="image/*"
                                     capture="environment"
+                                    className="hidden"
+                                    onChange={handleFileChange}
+                                />
+                                <input
+                                    ref={galleryInputRef}
+                                    type="file"
+                                    accept="image/*"
                                     className="hidden"
                                     onChange={handleFileChange}
                                 />
@@ -352,6 +437,50 @@ export default function ReportIssuePage() {
                                         <><span className="text-[16px]">📍</span> Attach Current Location</>
                                     )}
                                 </button>
+
+                                <div className="flex items-center gap-4 py-1 opacity-50">
+                                    <div className="flex-1 h-px bg-slate-400"></div>
+                                    <span className="text-[10px] font-black tracking-widest uppercase text-slate-500">OR</span>
+                                    <div className="flex-1 h-px bg-slate-400"></div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={addressInput}
+                                        onChange={(e) => setAddressInput(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleManualSearch(); } }}
+                                        placeholder="Enter street name or landmark..."
+                                        className="flex-1 bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 transition-all font-medium"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleManualSearch}
+                                        disabled={isSearching}
+                                        className="bg-slate-900 hover:bg-black text-white px-5 rounded-2xl font-bold transition-all disabled:opacity-50 flex items-center justify-center shadow-lg active:scale-95"
+                                    >
+                                        {isSearching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+                                    </button>
+                                </div>
+
+                                {showMap && (
+                                    <div className="mt-4 rounded-2xl overflow-hidden border border-slate-200 shadow-inner relative z-0 h-64 w-full bg-slate-100">
+                                        <MapContainer center={[13.033, 80.180]} zoom={13} scrollWheelZoom={true} className="h-full w-full relative z-0">
+                                            <TileLayer
+                                                attribution='&copy; OpenStreetMap'
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            />
+                                            <LocationPicker setLocation={setLocation} />
+                                            <MapFlyTo location={location} />
+                                            {location && <Marker position={[location.lat, location.lng]} />}
+                                        </MapContainer>
+                                        <div className="absolute top-2 left-0 w-full text-center pointer-events-none z-[400] px-4">
+                                            <span className="bg-white/90 backdrop-blur px-4 py-1.5 rounded-full text-xs font-bold shadow-sm text-indigo-700 ring-1 ring-black/[0.05]">
+                                                Tap anywhere to drop pin
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Submit Button */}

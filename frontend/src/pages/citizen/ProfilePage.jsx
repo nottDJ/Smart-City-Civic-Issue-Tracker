@@ -17,7 +17,7 @@ export default function ProfilePage() {
     const fetchMyReports = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3000/api/reports/me', {
+            const response = await fetch('http://10.10.64.148:3000/api/reports/me', {
                 headers: {
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 }
@@ -134,7 +134,7 @@ export default function ProfilePage() {
                             >
                                 {report.multimedia_urls && report.multimedia_urls[0] ? (
                                     <div className="sm:w-32 h-44 sm:h-auto shrink-0 bg-slate-100 overflow-hidden">
-                                        <img src={`http://localhost:3000${report.multimedia_urls[0]}`} alt="Issue" className="w-full h-full object-cover" />
+                                        <img src={`http://10.10.64.148:3000${report.multimedia_urls[0]}`} alt="Issue" className="w-full h-full object-cover" />
                                     </div>
                                 ) : (
                                     <div className="sm:w-32 h-16 sm:h-auto shrink-0 bg-slate-50 flex items-center justify-center text-slate-300">
