@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: civic_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-civic_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-civic_password}
+      POSTGRES_DB: ${DB_NAME:-civic_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-civic_user} -d ${DB_NAME:-civic_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: civic_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: ${PORT:-3000}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-civic_user}
+      DB_PASSWORD: ${DB_PASSWORD:-civic_password}
+      DB_NAME: ${DB_NAME:-civic_db}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
+
+volumes:
+  pgdata:
+    name: civic_pgdata
