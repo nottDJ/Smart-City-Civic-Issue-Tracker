@@ -319,4 +319,34 @@ router.patch('/:id/status', authenticateToken, async (req, res, next) => {
     }
 });
 
+// =============================================================================
+// DELETE /api/reports/:id
+// =============================================================================
+// Allows administrators to delete a report.
+// =============================================================================
+router.delete('/:id', authenticateToken, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const { rows } = await query(
+            'DELETE FROM reports WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ status: 'error', message: 'Report not found.' });
+        }
+
+        return res.status(200).json({
+            status: 'ok',
+            message: 'Report deleted successfully.',
+            report: rows[0]
+        });
+
+    } catch (err) {
+        console.error('[Reports] DELETE /api/reports/:id error:', err.message);
+        next(err);
+    }
+});
+
 module.exports = router;

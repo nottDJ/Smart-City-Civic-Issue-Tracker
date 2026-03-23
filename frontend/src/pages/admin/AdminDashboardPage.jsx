@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import toast from 'react-hot-toast';
 import L from 'leaflet';
+import { Trash2 } from 'lucide-react';
 
 // Icons for different statuses
 const iconPending = new L.Icon({
@@ -102,6 +103,28 @@ export default function AdminDashboardPage() {
         }
     }
 
+    const handleDelete = async (reportId) => {
+        if (!window.confirm("Are you sure you want to delete this report? This cannot be undone.")) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`http://10.10.64.148:3000/api/reports/${reportId}`, {
+                method: 'DELETE',
+                headers: {
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                }
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to delete report');
+
+            setReports(prev => prev.filter(r => r.id !== reportId));
+            toast.success('Report deleted.');
+        } catch (error) {
+            toast.error(error.message);
+        }
+    }
+
     if (isLoading) {
         return (
             <div className="p-8 h-full flex items-center justify-center bg-slate-50">
@@ -153,18 +176,27 @@ export default function AdminDashboardPage() {
                                 {report.title}
                             </h3>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
-                                <label className="text-xs font-semibold text-slate-500 shrink-0">Status:</label>
-                                <select 
-                                    value={report.status || 'pending'} 
-                                    onChange={(e) => handleStatusChange(report.id, e.target.value)}
-                                    disabled={updatingStatusId === report.id}
-                                    className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 w-full sm:w-auto"
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs font-semibold text-slate-500 shrink-0">Status:</label>
+                                    <select 
+                                        value={report.status || 'pending'} 
+                                        onChange={(e) => handleStatusChange(report.id, e.target.value)}
+                                        disabled={updatingStatusId === report.id}
+                                        className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 w-full sm:w-auto"
+                                    >
+                                        <option value="pending">Pending</option>
+                                        <option value="in_progress">In Progress</option>
+                                        <option value="resolved">Resolved</option>
+                                        <option value="rejected">Rejected</option>
+                                    </select>
+                                </div>
+                                <button
+                                    onClick={() => handleDelete(report.id)}
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100 flex items-center justify-center"
+                                    title="Delete Report"
                                 >
-                                    <option value="pending">Pending</option>
-                                    <option value="in_progress">In Progress</option>
-                                    <option value="resolved">Resolved</option>
-                                    <option value="rejected">Rejected</option>
-                                </select>
+                                    <Trash2 size={16} />
+                                </button>
                             </div>
                         </div>
                     ))}
