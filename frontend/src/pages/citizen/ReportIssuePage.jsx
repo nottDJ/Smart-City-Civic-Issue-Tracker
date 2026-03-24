@@ -4,6 +4,7 @@ import {
     Loader2, AlertCircle, CheckCircle2,
     X, FileAudio, FileVideo, Search
 } from 'lucide-react'
+import { BACKEND_URL } from '../../config'
 import toast from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
@@ -20,7 +21,7 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const API_BASE = 'http://10.10.64.148:3000'
+const API_BASE = BACKEND_URL;
 
 function LocationPicker({ setLocation }) {
     useMapEvents({

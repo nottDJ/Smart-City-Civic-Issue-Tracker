@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { UserCircle2 } from 'lucide-react';
+import { BACKEND_URL } from '../../config';
 
 export default function ExploreIssuesPage() {
     const [issues, setIssues] = useState([]);
@@ -30,7 +31,7 @@ export default function ExploreIssuesPage() {
 
     const fetchIssues = async () => {
         try {
-            const response = await fetch('http://10.10.64.148:3000/api/reports');
+            const response = await fetch(`${BACKEND_URL}/api/reports`);
             const data = await response.json();
 
             if (data && data.status === 'ok' && Array.isArray(data.reports)) {
@@ -64,7 +65,7 @@ export default function ExploreIssuesPage() {
         ));
 
         try {
-            const response = await fetch(`http://10.10.64.148:3000/api/reports/${id}/vouch`, {
+            const response = await fetch(`${BACKEND_URL}/api/reports/${id}/vouch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -248,7 +249,7 @@ export default function ExploreIssuesPage() {
                         {issue.multimedia_urls && issue.multimedia_urls[0] && (
                             <div className="overflow-hidden w-full h-56 relative bg-slate-100">
                                 <motion.img
-                                    src={`http://10.10.64.148:3000${issue.multimedia_urls[0]}`}
+                                    src={`${BACKEND_URL}${issue.multimedia_urls[0]}`}
                                     alt="Issue evidence"
                                     whileHover={{ scale: 1.05 }}
                                     transition={{ duration: 0.6, ease: "easeOut" }}

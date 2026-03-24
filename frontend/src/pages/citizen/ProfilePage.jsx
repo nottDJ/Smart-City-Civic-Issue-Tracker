@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { Camera, MapPin, ChevronLeft, UserCircle2, ArrowRight } from 'lucide-react';
+import { BACKEND_URL } from '../../config';
 
 export default function ProfilePage() {
     const [myReports, setMyReports] = useState([]);
@@ -17,7 +18,7 @@ export default function ProfilePage() {
     const fetchMyReports = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://10.10.64.148:3000/api/reports/me', {
+            const response = await fetch(`${BACKEND_URL}/api/reports/me`, {
                 headers: {
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 }
@@ -134,7 +135,7 @@ export default function ProfilePage() {
                             >
                                 {report.multimedia_urls && report.multimedia_urls[0] ? (
                                     <div className="sm:w-32 h-44 sm:h-auto shrink-0 bg-slate-100 overflow-hidden">
-                                        <img src={`http://10.10.64.148:3000${report.multimedia_urls[0]}`} alt="Issue" className="w-full h-full object-cover" />
+                                        <img src={`${BACKEND_URL}${report.multimedia_urls[0]}`} alt="Issue" className="w-full h-full object-cover" />
                                     </div>
                                 ) : (
                                     <div className="sm:w-32 h-16 sm:h-auto shrink-0 bg-slate-50 flex items-center justify-center text-slate-300">

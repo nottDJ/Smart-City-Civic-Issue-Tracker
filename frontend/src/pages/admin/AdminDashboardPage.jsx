@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import toast from 'react-hot-toast';
 import L from 'leaflet';
 import { Trash2 } from 'lucide-react';
+import { BACKEND_URL } from '../../config';
 
 // Icons for different statuses
 const iconPending = new L.Icon({
@@ -45,7 +46,7 @@ export default function AdminDashboardPage() {
     useEffect(() => {
         const fetchReports = async () => {
             try {
-                const response = await fetch('http://10.10.64.148:3000/api/reports');
+                const response = await fetch(`${BACKEND_URL}/api/reports`);
                 const data = await response.json();
 
                 let fetchedReports = [];
@@ -82,7 +83,7 @@ export default function AdminDashboardPage() {
         try {
             setUpdatingStatusId(reportId)
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://10.10.64.148:3000/api/reports/${reportId}/status`, {
+            const res = await fetch(`${BACKEND_URL}/api/reports/${reportId}/status`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -108,7 +109,7 @@ export default function AdminDashboardPage() {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://10.10.64.148:3000/api/reports/${reportId}`, {
+            const res = await fetch(`${BACKEND_URL}/api/reports/${reportId}`, {
                 method: 'DELETE',
                 headers: {
                     ...(token ? { 'Authorization': `Bearer ${token}` } : {})

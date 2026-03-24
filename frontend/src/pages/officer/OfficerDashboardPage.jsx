@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import {
     Clock, MapPin, Zap, CheckCircle2, AlertTriangle,
     Loader2, AlertCircle, Inbox, Image as ImageIcon,
-    Users, Timer, Building2, Activity,
 } from 'lucide-react'
+import { BACKEND_URL } from '../../config'
 
-const API_BASE = 'http://10.10.64.148:3000'
+const API_BASE = BACKEND_URL;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

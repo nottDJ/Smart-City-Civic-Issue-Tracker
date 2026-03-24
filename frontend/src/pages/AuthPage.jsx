@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, MonitorSpeaker, Loader2, AlertCircle } from 'lucide-react';
+import { BACKEND_URL } from '../config';
 
 export default function AuthPage() {
     const navigate = useNavigate();
@@ -30,7 +31,7 @@ export default function AuthPage() {
         setError('');
 
         const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-        const url = `http://10.10.64.148:3000${endpoint}`;
+        const url = `${BACKEND_URL}${endpoint}`;
 
         try {
             const res = await fetch(url, {
