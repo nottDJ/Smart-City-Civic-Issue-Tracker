@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, MonitorSpeaker, Loader2, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, MonitorSpeaker, Loader2, AlertCircle, Phone, Home, MapPin, CreditCard, CheckCircle2 } from 'lucide-react';
 import { BACKEND_URL } from '../config';
 
 export default function AuthPage() {
@@ -13,20 +13,115 @@ export default function AuthPage() {
         full_name: '',
         email: '',
         password: '',
+        phone: '',
+        home_address: '',
+        current_address: '',
+        aadhaar_number: ''
     });
 
+    const [isEmailVerified, setIsEmailVerified] = useState(false);
+    const [isMobileVerified, setIsMobileVerified] = useState(false);
+    const [emailOtp, setEmailOtp] = useState('');
+    const [mobileOtp, setMobileOtp] = useState('');
+    const [emailOtpSent, setEmailOtpSent] = useState(false);
+    const [mobileOtpSent, setMobileOtpSent] = useState(false);
+    const [emailLoading, setEmailLoading] = useState(false);
+    const [mobileLoading, setMobileLoading] = useState(false);
+
     const handleChange = (e) => {
-        setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+        let val = e.target.value;
+        if (e.target.name === 'aadhaar_number') {
+            val = val.replace(/\D/g, '').slice(0, 12);
+        }
+        setForm(prev => ({ ...prev, [e.target.name]: val }));
     };
 
     const toggleMode = () => {
         setIsLogin(!isLogin);
         setError('');
-        setForm({ ...form, password: '' }); // Clear password on toggle
+        setForm({
+            full_name: '', email: '', password: '', phone: '',
+            home_address: '', current_address: '', aadhaar_number: ''
+        });
+        setIsEmailVerified(false);
+        setIsMobileVerified(false);
+        setEmailOtpSent(false);
+        setMobileOtpSent(false);
+        setEmailOtp('');
+        setMobileOtp('');
+    };
+
+    const handleSendOtp = async (type) => {
+        const contact = type === 'email' ? form.email : form.phone;
+        if (!contact) {
+            setError(`Please enter your ${type} first.`);
+            return;
+        }
+
+        const setLoading = type === 'email' ? setEmailLoading : setMobileLoading;
+        const setSent = type === 'email' ? setEmailOtpSent : setMobileOtpSent;
+
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/auth/send-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contact, type })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to send OTP.');
+            setSent(true);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifyOtp = async (type) => {
+        const contact = type === 'email' ? form.email : form.phone;
+        const otp = type === 'email' ? emailOtp : mobileOtp;
+        if (!otp) {
+            setError('Please enter the OTP.');
+            return;
+        }
+
+        const setLoading = type === 'email' ? setEmailLoading : setMobileLoading;
+        const setVerified = type === 'email' ? setIsEmailVerified : setIsMobileVerified;
+
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/auth/verify-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contact, otp })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to verify OTP.');
+            setVerified(true);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        if (!isLogin) {
+            if (form.aadhaar_number.length !== 12) {
+                setError('Aadhaar number must be exactly 12 digits.');
+                return;
+            }
+            if (!isEmailVerified || !isMobileVerified) {
+                setError('Please verify both your email and mobile number before registering.');
+                return;
+            }
+        }
+
         setIsLoading(true);
         setError('');
 
@@ -34,10 +129,11 @@ export default function AuthPage() {
         const url = `${BACKEND_URL}${endpoint}`;
 
         try {
+            const payload = isLogin ? { email: form.email, password: form.password } : form;
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(form)
+                body: JSON.stringify(payload)
             });
 
             const data = await res.json();
@@ -141,21 +237,136 @@ export default function AuthPage() {
                             </div>
                         )}
 
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Email</label>
-                            <div className="relative">
-                                <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                                <input
-                                    type="email"
-                                    name="email"
-                                    required
-                                    value={form.email}
-                                    onChange={handleChange}
-                                    placeholder="jane@example.com"
-                                    className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 transition-all font-medium"
-                                />
+                        {!isLogin && (
+                            <>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Current Address</label>
+                                    <div className="relative">
+                                        <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        <input
+                                            type="text" name="current_address" required={!isLogin}
+                                            value={form.current_address} onChange={handleChange}
+                                            placeholder="123 Main St, City"
+                                            className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 font-medium"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Home Address</label>
+                                    <div className="relative">
+                                        <Home size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        <input
+                                            type="text" name="home_address" required={!isLogin}
+                                            value={form.home_address} onChange={handleChange}
+                                            placeholder="Same as current, or permanent address"
+                                            className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 font-medium"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Aadhaar Number</label>
+                                    <div className="relative">
+                                        <CreditCard size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        <input
+                                            type="text" name="aadhaar_number" required={!isLogin}
+                                            value={form.aadhaar_number} onChange={handleChange}
+                                            placeholder="12-digit Aadhaar"
+                                            className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 font-medium tracking-widest font-mono"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                {/* Registration Mobile Field with OTP */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Mobile Number</label>
+                                    <div className="flex gap-2">
+                                        <div className="relative flex-1">
+                                            <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                            <input
+                                                type="text" name="phone" required={!isLogin}
+                                                value={form.phone} onChange={handleChange}
+                                                disabled={isMobileVerified || mobileOtpSent}
+                                                placeholder="+919876543210"
+                                                className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-slate-900 disabled:bg-slate-50 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 font-medium"
+                                            />
+                                        </div>
+                                        {isMobileVerified ? (
+                                            <div className="flex items-center justify-center bg-green-50 text-green-600 px-4 rounded-2xl border border-green-200">
+                                                <CheckCircle2 size={20} />
+                                            </div>
+                                        ) : !mobileOtpSent ? (
+                                            <button type="button" onClick={() => handleSendOtp('mobile')} disabled={mobileLoading || !form.phone} className="bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-50 px-4 rounded-2xl text-sm font-bold transition-colors shrink-0">
+                                                {mobileLoading ? <Loader2 size={16} className="animate-spin" /> : 'Send OTP'}
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                    {!isMobileVerified && mobileOtpSent && (
+                                        <div className="flex gap-2 mt-2 animate-in fade-in slide-in-from-top-2">
+                                            <input
+                                                type="text" value={mobileOtp} onChange={e => setMobileOtp(e.target.value)}
+                                                placeholder="6-digit OTP" maxLength={6}
+                                                className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium tracking-widest text-center"
+                                            />
+                                            <button type="button" onClick={() => handleVerifyOtp('mobile')} disabled={mobileLoading || mobileOtp.length < 6} className="bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 px-5 rounded-2xl text-sm font-bold transition-colors">
+                                                {mobileLoading ? <Loader2 size={16} className="animate-spin" /> : 'Verify'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {isLogin ? (
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Email</label>
+                                <div className="relative">
+                                    <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    <input
+                                        type="email" name="email" required
+                                        value={form.email} onChange={handleChange}
+                                        placeholder="jane@example.com"
+                                        className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 transition-all font-medium"
+                                    />
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Email</label>
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        <input
+                                            type="email" name="email" required
+                                            value={form.email} onChange={handleChange}
+                                            disabled={isEmailVerified || emailOtpSent}
+                                            placeholder="jane@example.com"
+                                            className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-slate-900 disabled:bg-slate-50 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 font-medium"
+                                        />
+                                    </div>
+                                    {isEmailVerified ? (
+                                        <div className="flex items-center justify-center bg-green-50 text-green-600 px-4 rounded-2xl border border-green-200">
+                                            <CheckCircle2 size={20} />
+                                        </div>
+                                    ) : !emailOtpSent ? (
+                                        <button type="button" onClick={() => handleSendOtp('email')} disabled={emailLoading || !form.email} className="bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-50 px-4 rounded-2xl text-sm font-bold transition-colors shrink-0">
+                                            {emailLoading ? <Loader2 size={16} className="animate-spin" /> : 'Send OTP'}
+                                        </button>
+                                    ) : null}
+                                </div>
+                                {!isEmailVerified && emailOtpSent && (
+                                    <div className="flex gap-2 mt-2 animate-in fade-in slide-in-from-top-2">
+                                        <input
+                                            type="text" value={emailOtp} onChange={e => setEmailOtp(e.target.value)}
+                                            placeholder="6-digit OTP" maxLength={6}
+                                            className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium tracking-widest text-center"
+                                        />
+                                        <button type="button" onClick={() => handleVerifyOtp('email')} disabled={emailLoading || emailOtp.length < 6} className="bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 px-5 rounded-2xl text-sm font-bold transition-colors">
+                                            {emailLoading ? <Loader2 size={16} className="animate-spin" /> : 'Verify'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Password</label>
@@ -176,7 +387,7 @@ export default function AuthPage() {
                         <div className="pt-4">
                             <button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={isLoading || (!isLogin && (!isEmailVerified || !isMobileVerified))}
                                 className="w-full bg-slate-900 hover:bg-black text-white font-bold tracking-wide py-4 px-4 rounded-2xl shadow-xl shadow-slate-900/20 transition-all active:scale-[0.98] disabled:opacity-70 disabled:pointer-events-none flex items-center justify-center gap-2"
                             >
                                 {isLoading ? (

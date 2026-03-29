@@ -1,16 +1,18 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster } from 'react-hot-toast'
+// frontend/src/App.jsx
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 
-import CitizenLayout from './layouts/CitizenLayout'
-import OfficerLayout from './layouts/OfficerLayout'
-import AdminLayout from './layouts/AdminLayout'
+import AuthPage from './pages/AuthPage';
 
-import ReportIssuePage from './pages/citizen/ReportIssuePage'
-import ExploreIssuesPage from './pages/citizen/ExploreIssuesPage'
-import ProfilePage from './pages/citizen/ProfilePage'
-import OfficerDashboardPage from './pages/officer/OfficerDashboardPage'
-import AdminDashboardPage from './pages/admin/AdminDashboardPage'
-import AuthPage from './pages/AuthPage'
+import CitizenLayout from './layouts/CitizenLayout';
+import OfficerLayout from './layouts/OfficerLayout';
+import AdminLayout from './layouts/AdminLayout';
+
+import ReportIssuePage from './pages/citizen/ReportIssuePage';
+import ExploreIssuesPage from './pages/citizen/ExploreIssuesPage';
+import ProfilePage from './pages/citizen/ProfilePage';
+import OfficerDashboardPage from './pages/officer/OfficerDashboardPage';
+import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 
 // Protects routes by checking for a token and optionally verifying the user role
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -37,10 +39,10 @@ export default function App() {
         {/* Default redirect to Auth page */}
         <Route path="/" element={<Navigate to="/login" replace />} />
 
-        {/* Auth Route */}
+        {/* --- Authentication Routes --- */}
         <Route path="/login" element={<AuthPage />} />
 
-        {/* Citizen Portal */}
+        {/* --- Citizen Portal --- */}
         <Route path="/citizen" element={
           <ProtectedRoute allowedRoles={['citizen']}>
             <CitizenLayout />
@@ -52,7 +54,7 @@ export default function App() {
           <Route path="profile" element={<ProfilePage />} />
         </Route>
 
-        {/* Officer Dashboard */}
+        {/* --- Officer Dashboard --- */}
         <Route path="/officer" element={
           <ProtectedRoute allowedRoles={['officer']}>
             <OfficerLayout />
@@ -62,7 +64,7 @@ export default function App() {
           <Route path="dashboard" element={<OfficerDashboardPage />} />
         </Route>
 
-        {/* Admin Dashboard */}
+        {/* --- Admin Dashboard --- */}
         <Route path="/admin" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminLayout />
@@ -73,5 +75,5 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
-  )
+  );
 }
