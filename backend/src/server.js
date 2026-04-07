@@ -83,7 +83,8 @@ app.use('/api/reports', reportsRouter);
 // ─── API Stubs (to be expanded by feature branches) ──────────────────────────
 
 app.use('/api/auth', authRouter);
-app.use('/api/users', (req, res) => res.status(501).json({ message: 'Users routes — coming soon' }));
+const usersRouter = require('./routes/users');
+app.use('/api/users', usersRouter);
 app.use('/api/departments', (req, res) => res.status(501).json({ message: 'Departments routes — coming soon' }));
 app.use('/api/heatmap', (req, res) => res.status(501).json({ message: 'Heatmap routes — coming soon' }));
 
@@ -113,7 +114,7 @@ const start = async () => {
         console.log('[Server] Testing database connection…');
         await testConnection();
 
-        app.listen(PORT, '0.0.0.0', () => {
+        app.listen(PORT, () => {
             console.log(`\n┌─────────────────────────────────────────────────┐`);
             console.log(`│  🏙  Civic Issue Reporting System — Backend API  │`);
             console.log(`│  Listening on http://0.0.0.0:${PORT}               │`);

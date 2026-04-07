@@ -105,16 +105,7 @@ router.post('/register', async (req, res, next) => {
             return res.status(400).json({ status: 'error', message: 'Required fields missing.' });
         }
 
-        // Verify OTPs
-        const emailRecord = otpStore.get(email);
-        const phoneRecord = otpStore.get(phone);
-
-        if (!emailRecord || !emailRecord.verified) {
-            return res.status(400).json({ status: 'error', message: 'Email not verified.' });
-        }
-        if (!phoneRecord || !phoneRecord.verified) {
-            return res.status(400).json({ status: 'error', message: 'Mobile not verified.' });
-        }
+        // OTP verification removed per user request
 
         // Check if email already exists
         const { rows: existingUsers } = await query('SELECT id FROM users WHERE email = $1', [email]);
@@ -144,10 +135,7 @@ router.post('/register', async (req, res, next) => {
             [full_name, email, passwordHash, phone, home_address, current_address, aadhaar_number]
         );
 
-        // Clear OTP store
-        otpStore.delete(email);
-        otpStore.delete(phone);
-
+        // No OTP store to clear
         const newUser = rows[0];
 
         // Generate JWT

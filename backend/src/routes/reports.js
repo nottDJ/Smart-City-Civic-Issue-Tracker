@@ -6,6 +6,7 @@ const { Router } = require('express');
 const multer = require('multer');
 const { query } = require('../db');
 const jwt = require('jsonwebtoken');
+const { classifyIssue } = require('../services/aiClassification');
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key_change_in_prod';
@@ -52,15 +53,27 @@ const upload = multer({
     },
 });
 
+// ─── Category mapping from AI department → DB enum ────────────────────────────
+const DEPT_TO_CATEGORY = {
+    'Public Works': 'pothole',
+    'Street Lighting': 'street_light',
+    'Solid Waste Management': 'garbage',
+    'Water Supply': 'water_leak',
+    'Sewage & Sanitation': 'sewage',
+    'Town Planning': 'illegal_construction',
+    'Parks & Horticulture': 'tree_hazard',
+    'General Administration': 'other',
+};
+
 // =============================================================================
 // POST /api/reports
 // =============================================================================
 // Creates a new civic issue report submitted by a citizen.
+// AI auto-classifies the department and severity from title + description.
 //
 // Accepts multipart/form-data:
 //   title         — string (required)
 //   description   — string (optional)
-//   category      — string (required)
 //   lat           — float  (required)
 //   lng           — float  (required)
 //   media         — file   (optional – image / video / audio)
@@ -68,12 +81,11 @@ const upload = multer({
 
 router.post('/', authenticateToken, upload.single('media'), async (req, res, next) => {
     try {
-        const { title, description, category, lat, lng } = req.body;
+        const { title, description, lat, lng } = req.body;
 
         // ── Validation ────────────────────────────────────────────────────────
         const missingFields = [];
         if (!title || !title.trim()) missingFields.push('title');
-        if (!category || !category.trim()) missingFields.push('category');
         if (lat === undefined || lat === '') missingFields.push('lat');
         if (lng === undefined || lng === '') missingFields.push('lng');
 
@@ -90,29 +102,39 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
             return res.status(400).json({ status: 'error', message: 'Invalid lat/lng values.' });
         }
 
+        // ── AI Classification ─────────────────────────────────────────────────
+        console.log('[Reports] 🤖 Running AI classification…');
+        const classification = await classifyIssue(title.trim(), description?.trim());
+        console.log('[Reports] AI result:', JSON.stringify(classification));
+
+        // Look up department_id from the AI's department string
+        const { rows: deptRows } = await query(
+            'SELECT id FROM departments WHERE name = $1',
+            [classification.department]
+        );
+        const department_id = deptRows.length > 0 ? deptRows[0].id : null;
+
+        // Map AI department to the closest DB category enum
+        const category = DEPT_TO_CATEGORY[classification.department] || 'other';
+        const severity = classification.severity; // already validated in service
+
         // ── Optional media path ───────────────────────────────────────────────
-        // Store a relative URL (/uploads/<filename>) so the frontend can load it.
         const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
         // ── INSERT into PostgreSQL via PostGIS ────────────────────────────────
-
-        // Use authenticated user ID instead of dummy user
         const reported_by = req.user.id;
 
         const sql = `
             INSERT INTO reports
-                (title, description, category, location, status, multimedia_urls, reported_by)
+                (title, description, category, severity, department_id,
+                 location, status, multimedia_urls, reported_by)
             VALUES
-                ($1, $2, $3,
-                 ST_SetSRID(ST_MakePoint($4, $5), 4326),
+                ($1, $2, $3, $4, $5,
+                 ST_SetSRID(ST_MakePoint($6, $7), 4326),
                  'pending',
-                 $6, $7)
+                 $8, $9)
             RETURNING
-                id,
-                title,
-                description,
-                category,
-                status,
+                id, title, description, category, severity, department_id, status,
                 multimedia_urls,
                 ST_AsGeoJSON(location)::json AS location,
                 created_at;
@@ -123,20 +145,27 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
         const { rows } = await query(sql, [
             title.trim(),
             description?.trim() || null,
-            category.trim(),
+            category,
+            severity,
+            department_id,
             lngNum,   // PostGIS MakePoint takes (lng, lat) — X then Y
             latNum,
             mediaArray,
             reported_by,
         ]);
 
+        // Attach the human-readable department name to the response
+        const report = {
+            ...rows[0],
+            media_url: rows[0].multimedia_urls?.[0] || null,
+            ai_department: classification.department,
+            ai_severity: classification.severity,
+        };
+
         return res.status(201).json({
             status: 'ok',
-            message: 'Report submitted successfully.',
-            report: {
-                ...rows[0],
-                media_url: rows[0].multimedia_urls?.[0] || null, // Keep frontend compat
-            },
+            message: 'Report submitted and classified by AI.',
+            report,
         });
 
     } catch (err) {
@@ -155,31 +184,35 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
 // GET /api/reports
 // =============================================================================
 // Lightweight public listing (most-recent first, limited to 50).
-// No auth required for MVP — citizens can browse submitted reports.
+// Now includes severity and department info.
 // =============================================================================
 
 router.get('/', async (req, res, next) => {
     try {
-        const { category, status, limit = 50 } = req.query;
+        const { category, status, severity, limit = 50 } = req.query;
         const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
 
         const conditions = [];
         const params = [];
 
-        if (category) { params.push(category); conditions.push(`category = $${params.length}`); }
-        if (status) { params.push(status); conditions.push(`status   = $${params.length}`); }
+        if (category) { params.push(category); conditions.push(`r.category = $${params.length}`); }
+        if (status)   { params.push(status);   conditions.push(`r.status   = $${params.length}`); }
+        if (severity) { params.push(severity); conditions.push(`r.severity = $${params.length}`); }
 
         const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
         params.push(safeLimit);
 
         const sql = `
             SELECT
-                id, title, description, category, status, multimedia_urls, vouch_count,
-                ST_AsGeoJSON(location)::json AS location,
-                created_at
-            FROM reports
+                r.id, r.title, r.description, r.category, r.status,
+                r.severity, r.department_id, d.name AS department_name,
+                r.multimedia_urls, r.vouch_count,
+                ST_AsGeoJSON(r.location)::json AS location,
+                r.created_at
+            FROM reports r
+            LEFT JOIN departments d ON r.department_id = d.id
             ${where}
-            ORDER BY created_at DESC
+            ORDER BY r.created_at DESC
             LIMIT $${params.length};
         `;
 
@@ -203,12 +236,15 @@ router.get('/me', authenticateToken, async (req, res, next) => {
         const user_id = req.user.id;
         const sql = `
             SELECT
-                id, title, description, category, status, multimedia_urls, vouch_count,
-                ST_AsGeoJSON(location)::json AS location,
-                created_at
-            FROM reports
-            WHERE reported_by = $1
-            ORDER BY created_at DESC;
+                r.id, r.title, r.description, r.category, r.status,
+                r.severity, r.department_id, d.name AS department_name,
+                r.multimedia_urls, r.vouch_count,
+                ST_AsGeoJSON(r.location)::json AS location,
+                r.created_at
+            FROM reports r
+            LEFT JOIN departments d ON r.department_id = d.id
+            WHERE r.reported_by = $1
+            ORDER BY r.created_at DESC;
         `;
         const { rows } = await query(sql, [user_id]);
         return res.status(200).json({ status: 'ok', count: rows.length, reports: rows });

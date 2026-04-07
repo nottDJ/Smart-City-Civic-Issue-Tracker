@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect } from 'react'
 import {
-    Camera, MapPin, ChevronDown, Send,
+    Camera, MapPin, Send,
     Loader2, AlertCircle, CheckCircle2,
-    X, FileAudio, FileVideo, Search
+    X, FileAudio, FileVideo, Search, Brain, Sparkles
 } from 'lucide-react'
 import { BACKEND_URL } from '../../config'
 import toast from 'react-hot-toast'
@@ -42,20 +42,7 @@ function MapFlyTo({ location }) {
     return null
 }
 
-const CATEGORIES = [
-    { label: 'Pothole / Road Damage', value: 'pothole' },
-    { label: 'Streetlight Outage', value: 'street_light' },
-    { label: 'Garbage / Sanitation', value: 'garbage' },
-    { label: 'Water Leakage / Pipe Burst', value: 'water_leak' },
-    { label: 'Encroachment', value: 'encroachment' },
-    { label: 'Sewage Overflow', value: 'sewage' },
-    { label: 'Illegal Construction', value: 'illegal_construction' },
-    { label: 'Noise Pollution', value: 'noise_pollution' },
-    { label: 'Fallen Tree / Branch', value: 'tree_hazard' },
-    { label: 'Other', value: 'other' },
-]
-
-const INITIAL_FORM = { title: '', category: '', description: '' }
+const INITIAL_FORM = { title: '', description: '' }
 
 export default function ReportIssuePage() {
     // ── Form fields ────────────────────────────────────────────────────────────
@@ -151,6 +138,7 @@ export default function ReportIssuePage() {
 
     // ── Submit state ───────────────────────────────────────────────────────────
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isClassifying, setIsClassifying] = useState(false) // AI step
     const [submitSuccess, setSubmitSuccess] = useState(null) // created report object
     const [submitError, setSubmitError] = useState(null)
 
@@ -163,10 +151,6 @@ export default function ReportIssuePage() {
             setSubmitError('Please enter a title for the issue.')
             return
         }
-        if (!form.category) {
-            setSubmitError('Please select a category.')
-            return
-        }
         if (!location) {
             setSubmitError('Please fetch your GPS location before submitting.')
             return
@@ -177,12 +161,12 @@ export default function ReportIssuePage() {
         const body = new FormData()
         body.append('title', form.title.trim())
         body.append('description', form.description.trim())
-        body.append('category', form.category)
         body.append('lat', location.lat)
         body.append('lng', location.lng)
         if (mediaFile) body.append('media', mediaFile)
 
         setIsSubmitting(true)
+        setIsClassifying(true)
         try {
             const token = localStorage.getItem('token')
             const res = await fetch(`${API_BASE}/api/reports`, {
@@ -212,6 +196,7 @@ export default function ReportIssuePage() {
             toast.error(errorMsg)
         } finally {
             setIsSubmitting(false)
+            setIsClassifying(false)
         }
     }
 
@@ -273,7 +258,34 @@ export default function ReportIssuePage() {
                                 <CheckCircle2 size={40} />
                             </div>
                             <h2 className="text-2xl font-black tracking-[-0.03em] text-slate-900 mb-2">Report Submitted</h2>
-                            <p className="text-slate-500 font-medium mb-8">Thank you for helping improve our city. We'll route this to the correct department.</p>
+                            <p className="text-slate-500 font-medium mb-4">Thank you for helping improve our city.</p>
+
+                            {/* AI Classification Result */}
+                            {(submitSuccess.ai_department || submitSuccess.ai_severity) && (
+                                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 mb-6 text-left space-y-3">
+                                    <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm">
+                                        <Sparkles size={16} />
+                                        AI Classification Result
+                                    </div>
+                                    {submitSuccess.ai_department && (
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-slate-500 font-medium">Routed to</span>
+                                            <span className="font-bold text-slate-900 bg-white px-3 py-1 rounded-lg border border-slate-200">{submitSuccess.ai_department}</span>
+                                        </div>
+                                    )}
+                                    {submitSuccess.ai_severity && (
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-slate-500 font-medium">Severity</span>
+                                            <span className={`font-bold px-3 py-1 rounded-lg border capitalize ${
+                                                submitSuccess.ai_severity === 'critical' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                submitSuccess.ai_severity === 'high' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                                submitSuccess.ai_severity === 'medium' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                'bg-blue-50 text-blue-700 border-blue-200'
+                                            }`}>{submitSuccess.ai_severity}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <motion.button
                                 whileTap={{ scale: 0.95 }}
@@ -326,23 +338,14 @@ export default function ReportIssuePage() {
                                 ></textarea>
                             </div>
 
-                            {/* Category */}
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Category</label>
-                                <div className="relative">
-                                    <select
-                                        name="category"
-                                        value={form.category}
-                                        required
-                                        onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                                        className="w-full appearance-none bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-4 focus:ring-slate-900/10 focus:border-slate-400 transition-all font-bold tracking-wide"
-                                    >
-                                        <option value="" disabled>Select a category</option>
-                                        {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                                    </select>
-                                    <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-                                        <ChevronDown size={18} className="text-slate-400" />
-                                    </div>
+                            {/* AI Classification Notice */}
+                            <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl px-4 py-3.5 flex items-center gap-3">
+                                <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
+                                    <Brain size={18} className="text-indigo-600" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-bold text-indigo-700">AI Auto-Classification</p>
+                                    <p className="text-[11px] text-indigo-500 font-medium">Department & severity will be determined automatically by our AI when you submit.</p>
                                 </div>
                             </div>
 
@@ -495,7 +498,7 @@ export default function ReportIssuePage() {
                                     {isSubmitting ? (
                                         <>
                                             <Loader2 size={18} className="animate-spin" />
-                                            <span>Submitting...</span>
+                                            <span>{isClassifying ? '🤖 AI is classifying your report…' : 'Submitting…'}</span>
                                         </>
                                     ) : (
                                         <>
