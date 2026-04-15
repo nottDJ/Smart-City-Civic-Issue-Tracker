@@ -257,9 +257,9 @@ export default function AdminDashboardPage() {
             {/* Main Content Area */}
             {activeTab === 'reports' ? (
                 /* ─── REPORTS / MAP VIEW ─── */
-                <div className="flex-1 overflow-hidden relative z-0 grid md:grid-cols-3">
+                <div className="flex-1 overflow-hidden relative z-0 grid grid-cols-1 md:grid-cols-3">
                     {/* Left Column: Priority Inbox */}
-                    <div className="overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 space-y-4">
+                    <div className="overflow-y-auto max-h-[50vh] md:max-h-none border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50 p-4 space-y-4">
                         <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Priority Inbox</h2>
 
                         {/* Severity Filter Toggles */}

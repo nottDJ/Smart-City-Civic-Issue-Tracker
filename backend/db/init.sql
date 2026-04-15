@@ -81,6 +81,11 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash   VARCHAR(255)    NOT NULL,
     phone           VARCHAR(20),
 
+    -- KYC / Aadhaar
+    aadhaar_number  VARCHAR(12)     UNIQUE,
+    home_address    TEXT,
+    current_address TEXT,
+
     -- RBAC
     role            user_role       NOT NULL DEFAULT 'citizen',
 
@@ -95,6 +100,8 @@ CREATE TABLE IF NOT EXISTS users (
     -- Account flags
     is_verified     BOOLEAN         NOT NULL DEFAULT FALSE,
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
+    is_email_verified  BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_mobile_verified BOOLEAN      NOT NULL DEFAULT FALSE,
 
     -- Audit
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
@@ -119,6 +126,7 @@ CREATE TABLE IF NOT EXISTS reports (
     -- Classification
     category            issue_category  NOT NULL DEFAULT 'other',
     status              report_status   NOT NULL DEFAULT 'pending',
+    severity            VARCHAR(20)     NOT NULL DEFAULT 'medium',
 
     -- AI Priority Queue score (higher = more urgent; computed by NLP service)
     priority_score      SMALLINT        NOT NULL DEFAULT 0 CHECK (priority_score BETWEEN 0 AND 100),
@@ -192,6 +200,23 @@ CREATE TABLE IF NOT EXISTS report_vouches (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (report_id, user_id)   -- composite PK enforces one-vouch-per-user
 );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- AUDIT LOGS (tracks status changes for live issue tracking)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id              UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id       UUID            NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+    changed_by      UUID            NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    old_status      report_status,
+    new_status      report_status   NOT NULL,
+    notes           TEXT,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_report ON audit_logs(report_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
 
 -- =============================================================================
 -- Schema initialised successfully!

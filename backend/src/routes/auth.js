@@ -169,9 +169,9 @@ router.post('/login', async (req, res, next) => {
             return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
         }
 
-        // Find user by email
+        // Find user by email (include department_id for officer routing)
         const { rows } = await query(
-            'SELECT id, full_name, email, password_hash, role FROM users WHERE email = $1',
+            'SELECT id, full_name, email, password_hash, role, department_id FROM users WHERE email = $1',
             [email]
         );
 

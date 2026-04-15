@@ -255,6 +255,37 @@ router.get('/me', authenticateToken, async (req, res, next) => {
 });
 
 // =============================================================================
+// GET /api/reports/my-vouches
+// =============================================================================
+// Fetches reports the authenticated user has vouched for (but didn't create).
+// =============================================================================
+
+router.get('/my-vouches', authenticateToken, async (req, res, next) => {
+    try {
+        const user_id = req.user.id;
+        const sql = `
+            SELECT
+                r.id, r.title, r.description, r.category, r.status,
+                r.severity, r.department_id, d.name AS department_name,
+                r.multimedia_urls, r.vouch_count,
+                ST_AsGeoJSON(r.location)::json AS location,
+                r.created_at,
+                rv.created_at AS vouched_at
+            FROM report_vouches rv
+            JOIN reports r ON r.id = rv.report_id
+            LEFT JOIN departments d ON r.department_id = d.id
+            WHERE rv.user_id = $1
+            ORDER BY rv.created_at DESC;
+        `;
+        const { rows } = await query(sql, [user_id]);
+        return res.status(200).json({ status: 'ok', count: rows.length, reports: rows });
+    } catch (err) {
+        console.error('[Reports] GET /api/reports/my-vouches error:', err.message);
+        next(err);
+    }
+});
+
+// =============================================================================
 // POST /api/reports/:id/vouch
 // =============================================================================
 // Lets a citizen vouch for (upvote) an existing report.
@@ -322,6 +353,11 @@ router.post('/:id/vouch', authenticateToken, async (req, res, next) => {
 // =============================================================================
 router.patch('/:id/status', authenticateToken, async (req, res, next) => {
     try {
+        // Only admins and officers can change status
+        if (!['admin', 'officer'].includes(req.user.role)) {
+            return res.status(403).json({ status: 'error', message: 'Only officers and admins can update report status.' });
+        }
+
         const { id } = req.params;
         const { status } = req.body;
 
@@ -334,14 +370,25 @@ router.patch('/:id/status', authenticateToken, async (req, res, next) => {
             return res.status(400).json({ status: 'error', message: 'Invalid status.' });
         }
 
+        // Fetch current status for audit log
+        const { rows: currentRows } = await query('SELECT status FROM reports WHERE id = $1', [id]);
+        if (currentRows.length === 0) {
+            return res.status(404).json({ status: 'error', message: 'Report not found.' });
+        }
+        const oldStatus = currentRows[0].status;
+
+        // Update with resolved_at timestamp if resolving
+        const resolvedClause = status.toLowerCase() === 'resolved' ? ', resolved_at = NOW()' : '';
         const { rows } = await query(
-            'UPDATE reports SET status = $1 WHERE id = $2 RETURNING *',
+            `UPDATE reports SET status = $1${resolvedClause} WHERE id = $2 RETURNING *`,
             [status.toLowerCase(), id]
         );
 
-        if (rows.length === 0) {
-            return res.status(404).json({ status: 'error', message: 'Report not found.' });
-        }
+        // Write audit log
+        await query(
+            'INSERT INTO audit_logs (report_id, changed_by, old_status, new_status) VALUES ($1, $2, $3, $4)',
+            [id, req.user.id, oldStatus, status.toLowerCase()]
+        );
 
         return res.status(200).json({
             status: 'ok',

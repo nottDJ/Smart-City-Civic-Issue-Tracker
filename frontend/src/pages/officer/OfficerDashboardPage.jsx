@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react'
 import {
     Clock, MapPin, Zap, CheckCircle2, AlertTriangle,
     Loader2, AlertCircle, Inbox, Image as ImageIcon,
+    Activity, Users, Timer, ChevronDown, ArrowUpCircle,
+    Menu, X
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { BACKEND_URL } from '../../config'
 
 const API_BASE = BACKEND_URL;
@@ -120,13 +123,21 @@ export default function OfficerDashboardPage() {
     const [selectedReport, setSelectedReport] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(null)
+    const [updatingStatus, setUpdatingStatus] = useState(false)
+    const [showMobileInbox, setShowMobileInbox] = useState(true)
 
     useEffect(() => {
         let cancelled = false
         setIsLoading(true)
         setError(null)
 
-        fetch(`${API_BASE}/api/officer/reports`)
+        const token = localStorage.getItem('token')
+
+        fetch(`${API_BASE}/api/officer/reports`, {
+            headers: {
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            }
+        })
             .then(res => {
                 if (!res.ok) throw new Error(`Server error ${res.status}`)
                 return res.json()
@@ -148,6 +159,50 @@ export default function OfficerDashboardPage() {
         return () => { cancelled = true }
     }, [])
 
+    // ── Status update handler ─────────────────────────────────────────────────
+    const handleStatusChange = async (reportId, newStatus) => {
+        setUpdatingStatus(true)
+        try {
+            const token = localStorage.getItem('token')
+            const res = await fetch(`${API_BASE}/api/reports/${reportId}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ status: newStatus })
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.message || 'Failed to update status')
+
+            // Update local state immediately (optimistic)
+            setReports(prev => prev.map(r =>
+                r.id === reportId ? { ...r, status: newStatus } : r
+            ))
+            if (selectedReport?.id === reportId) {
+                setSelectedReport(prev => ({ ...prev, status: newStatus }))
+            }
+
+            toast.success(`Status updated to "${newStatus.replace('_', ' ')}"`)
+
+            // If resolved/rejected, remove from the active queue after a brief moment
+            if (['resolved', 'rejected'].includes(newStatus)) {
+                setTimeout(() => {
+                    setReports(prev => {
+                        const updated = prev.filter(r => r.id !== reportId)
+                        setSelectedReport(updated[0] ?? null)
+                        return updated
+                    })
+                }, 800)
+            }
+        } catch (err) {
+            toast.error(err.message)
+        } finally {
+            setUpdatingStatus(false)
+        }
+    }
+
     // Derive media URL — officer route uses multimedia_urls (TEXT[])
     const mediaUrl = selectedReport?.multimedia_urls?.[0]
         ? `${API_BASE}${selectedReport.multimedia_urls[0]}`
@@ -157,13 +212,28 @@ export default function OfficerDashboardPage() {
     const bd = selectedReport?.priority_breakdown ?? {}
 
     return (
-        <div className="flex h-full">
+        <div className="flex flex-col md:flex-row h-full">
+
+            {/* ── Mobile header ──────────────────────────────────────── */}
+            <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
+                <h2 className="font-bold text-slate-800 text-sm">
+                    {showMobileInbox ? 'Incoming Tickets' : selectedReport?.title || 'Report Details'}
+                </h2>
+                <button
+                    onClick={() => setShowMobileInbox(!showMobileInbox)}
+                    className="p-2 bg-slate-100 rounded-xl text-slate-600"
+                >
+                    {showMobileInbox ? <X size={18} /> : <Menu size={18} />}
+                </button>
+            </div>
 
             {/* ── LEFT: Inbox pane ──────────────────────────────────────────── */}
-            <aside className="w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
+            <aside className={`w-full md:w-80 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden ${
+                showMobileInbox ? 'flex' : 'hidden md:flex'
+            }`}>
 
                 {/* Header */}
-                <div className="px-4 py-4 border-b border-slate-200 bg-slate-50">
+                <div className="px-4 py-4 border-b border-slate-200 bg-slate-50 hidden md:block">
                     <h2 className="font-bold text-slate-800 text-sm">Incoming Tickets</h2>
                     <p className="text-xs text-slate-500 mt-0.5">
                         {isLoading ? 'Loading…' : `${reports.length} unresolved · sorted by AI score`}
@@ -185,7 +255,7 @@ export default function OfficerDashboardPage() {
                     ) : reports.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-2 py-16 text-center px-4">
                             <Inbox size={28} className="text-slate-300" />
-                            <p className="text-xs text-slate-400">No pending reports right now.</p>
+                            <p className="text-xs text-slate-400">No pending reports for your department.</p>
                         </div>
                     ) : (
                         reports.map(report => {
@@ -193,7 +263,10 @@ export default function OfficerDashboardPage() {
                             return (
                                 <button
                                     key={report.id}
-                                    onClick={() => setSelectedReport(report)}
+                                    onClick={() => {
+                                        setSelectedReport(report)
+                                        setShowMobileInbox(false)
+                                    }}
                                     className={`w-full text-left px-4 py-3.5 transition-colors hover:bg-indigo-50
                                         ${isActive ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : 'border-l-4 border-l-transparent'}`}
                                 >
@@ -231,7 +304,19 @@ export default function OfficerDashboardPage() {
             </aside>
 
             {/* ── RIGHT: Priority Action Panel ───────────────────────────────── */}
-            <section className="flex-1 overflow-y-auto bg-slate-50 flex flex-col">
+            <section className={`flex-1 overflow-y-auto bg-slate-50 flex flex-col ${
+                showMobileInbox ? 'hidden md:flex' : 'flex'
+            }`}>
+
+                {/* Mobile back button */}
+                <div className="md:hidden px-4 py-2">
+                    <button
+                        onClick={() => setShowMobileInbox(true)}
+                        className="text-sm text-indigo-600 font-bold flex items-center gap-1"
+                    >
+                        ← Back to tickets
+                    </button>
+                </div>
 
                 {isLoading ? (
                     <div className="flex-1 flex items-center justify-center">
@@ -243,10 +328,10 @@ export default function OfficerDashboardPage() {
                 ) : !selectedReport ? (
                     <EmptySelection />
                 ) : (
-                    <div className="p-6 space-y-5">
+                    <div className="p-4 md:p-6 space-y-5">
 
                         {/* ── Header ────────────────────────────────────────── */}
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start justify-between gap-4 flex-wrap">
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <p className="text-xs font-mono text-slate-400">#{selectedReport.id?.slice(0, 8)}</p>
@@ -257,7 +342,7 @@ export default function OfficerDashboardPage() {
                                         </span>
                                     )}
                                 </div>
-                                <h2 className="text-xl font-bold text-slate-800 mt-1.5 leading-snug">
+                                <h2 className="text-lg md:text-xl font-bold text-slate-800 mt-1.5 leading-snug">
                                     {selectedReport.title}
                                 </h2>
                                 {selectedReport.description && (
@@ -286,18 +371,18 @@ export default function OfficerDashboardPage() {
                         )}
 
                         {/* ── AI Priority Score ─────────────────────────────── */}
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-6">
                             <div className="flex items-center gap-2 mb-5">
                                 <Zap size={18} className="text-indigo-500" />
                                 <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">AI Priority Score</h3>
                             </div>
 
                             <div className="flex items-end gap-4 mb-4">
-                                <span className={`text-7xl font-black leading-none tabular-nums ${scoreTextClass(score)}`}>
+                                <span className={`text-5xl md:text-7xl font-black leading-none tabular-nums ${scoreTextClass(score)}`}>
                                     {score}
                                 </span>
                                 <div className="pb-2">
-                                    <span className="text-2xl font-light text-slate-400">/ 100</span>
+                                    <span className="text-xl md:text-2xl font-light text-slate-400">/ 100</span>
                                     <p className={`text-sm font-semibold mt-1 ${scoreTextClass(score)}`}>
                                         {priorityLabel(score)}
                                     </p>
@@ -333,11 +418,11 @@ export default function OfficerDashboardPage() {
                         )}
 
                         {/* ── Location + Details ────────────────────────────── */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                             {/* Coordinates */}
                             {selectedReport.location && (
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 col-span-2">
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 col-span-1 sm:col-span-2">
                                     <div className="flex items-center gap-2 mb-3">
                                         <MapPin size={15} className="text-emerald-500" />
                                         <h3 className="font-bold text-slate-700 text-sm">Location</h3>
@@ -384,13 +469,42 @@ export default function OfficerDashboardPage() {
                             </div>
                         </div>
 
-                        {/* ── Action Buttons ────────────────────────────────── */}
+                        {/* ── Status Update Dropdown ───────────────────────── */}
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <ChevronDown size={15} className="text-slate-500" />
+                                <h3 className="font-bold text-slate-700 text-sm">Update Status</h3>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <select
+                                    value={selectedReport.status || 'pending'}
+                                    onChange={(e) => handleStatusChange(selectedReport.id, e.target.value)}
+                                    disabled={updatingStatus}
+                                    className="flex-1 bg-slate-50 border border-slate-200 text-sm font-bold rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 cursor-pointer"
+                                >
+                                    <option value="pending">⏳ Pending</option>
+                                    <option value="in_progress">🔧 In Progress</option>
+                                    <option value="resolved">✅ Resolved</option>
+                                    <option value="rejected">❌ Rejected</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* ── Quick Action Buttons ────────────────────────────── */}
                         <div className="grid grid-cols-2 gap-3 pb-2">
-                            <button className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all">
-                                <AlertTriangle size={16} />
-                                Escalate Issue
+                            <button
+                                onClick={() => handleStatusChange(selectedReport.id, 'in_progress')}
+                                disabled={updatingStatus || selectedReport.status === 'in_progress'}
+                                className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:pointer-events-none"
+                            >
+                                <ArrowUpCircle size={16} />
+                                Escalate / In Progress
                             </button>
-                            <button className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all">
+                            <button
+                                onClick={() => handleStatusChange(selectedReport.id, 'resolved')}
+                                disabled={updatingStatus || selectedReport.status === 'resolved'}
+                                className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:pointer-events-none"
+                            >
                                 <CheckCircle2 size={16} />
                                 Mark Resolved
                             </button>
