@@ -27,8 +27,23 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// Allow all origins temporarily for local network testing
-app.use(cors({ origin: '*' }));
+// Restrict origins to frontend deployments
+const allowedOrigins = [
+    'http://localhost:5173',                          // Vite dev server
+    'http://127.0.0.1:5173',
+    process.env.FRONTEND_URL,                         // Production Vercel URL
+].filter(Boolean);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, Postman)
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+}));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));

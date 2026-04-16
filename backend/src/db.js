@@ -11,6 +11,11 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || 'civic_password',
   database: process.env.DB_NAME     || 'civic_db',
 
+  // Neon requires SSL; disable in local dev
+  ...(process.env.NODE_ENV === 'production' && {
+    ssl: { rejectUnauthorized: false },
+  }),
+
   // Connection pool sizing — tune for prod
   max:              20,   // max connections in pool
   idleTimeoutMillis: 30_000,
