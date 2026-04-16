@@ -11,6 +11,9 @@ const { testConnection, query } = require('./db');
 const officerReportsRouter = require('./routes/officerReports');
 const reportsRouter = require('./routes/reports');
 const authRouter = require('./routes/auth');
+const departmentsRouter = require('./routes/departments');
+const adminRouter = require('./routes/admin');
+const { seedDepartments } = require('./routes/departments');
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 
@@ -80,12 +83,13 @@ app.get('/', (req, res) => {
 app.use('/api/officer/reports', officerReportsRouter);
 app.use('/api/reports', reportsRouter);
 
-// ─── API Stubs (to be expanded by feature branches) ──────────────────────────
+// ─── Auth & User Management ─────────────────────────────────────────────────
 
 app.use('/api/auth', authRouter);
 const usersRouter = require('./routes/users');
 app.use('/api/users', usersRouter);
-app.use('/api/departments', (req, res) => res.status(501).json({ message: 'Departments routes — coming soon' }));
+app.use('/api/departments', departmentsRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/heatmap', (req, res) => res.status(501).json({ message: 'Heatmap routes — coming soon' }));
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
@@ -113,6 +117,9 @@ const start = async () => {
     try {
         console.log('[Server] Testing database connection…');
         await testConnection();
+
+        // Seed official departments into the database
+        await seedDepartments();
 
         app.listen(PORT, () => {
             console.log(`\n┌─────────────────────────────────────────────────┐`);

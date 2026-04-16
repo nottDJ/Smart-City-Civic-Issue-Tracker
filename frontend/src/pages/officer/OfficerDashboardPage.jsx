@@ -3,7 +3,7 @@ import {
     Clock, MapPin, Zap, CheckCircle2, AlertTriangle,
     Loader2, AlertCircle, Inbox, Image as ImageIcon,
     Activity, Users, Timer, ChevronDown, ArrowUpCircle,
-    Menu, X
+    Menu, X, History
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { BACKEND_URL } from '../../config'
@@ -125,15 +125,18 @@ export default function OfficerDashboardPage() {
     const [error, setError] = useState(null)
     const [updatingStatus, setUpdatingStatus] = useState(false)
     const [showMobileInbox, setShowMobileInbox] = useState(true)
+    const [queueTab, setQueueTab] = useState('active') // 'active' | 'history'
 
     useEffect(() => {
         let cancelled = false
         setIsLoading(true)
         setError(null)
+        setSelectedReport(null)
 
         const token = localStorage.getItem('token')
+        const params = queueTab === 'history' ? '?status=resolved' : ''
 
-        fetch(`${API_BASE}/api/officer/reports`, {
+        fetch(`${API_BASE}/api/officer/reports${params}`, {
             headers: {
                 ...(token ? { 'Authorization': `Bearer ${token}` } : {})
             }
@@ -157,7 +160,7 @@ export default function OfficerDashboardPage() {
             })
 
         return () => { cancelled = true }
-    }, [])
+    }, [queueTab])
 
     // ── Status update handler ─────────────────────────────────────────────────
     const handleStatusChange = async (reportId, newStatus) => {
@@ -186,8 +189,8 @@ export default function OfficerDashboardPage() {
 
             toast.success(`Status updated to "${newStatus.replace('_', ' ')}"`)
 
-            // If resolved/rejected, remove from the active queue after a brief moment
-            if (['resolved', 'rejected'].includes(newStatus)) {
+            // If resolved/rejected on the active tab, remove from active queue after a brief moment
+            if (['resolved', 'rejected'].includes(newStatus) && queueTab === 'active') {
                 setTimeout(() => {
                     setReports(prev => {
                         const updated = prev.filter(r => r.id !== reportId)
@@ -210,6 +213,7 @@ export default function OfficerDashboardPage() {
 
     const score = selectedReport?.priority_score ?? 0
     const bd = selectedReport?.priority_breakdown ?? {}
+    const isResolved = selectedReport?.status === 'resolved'
 
     return (
         <div className="flex flex-col md:flex-row h-full">
@@ -217,7 +221,9 @@ export default function OfficerDashboardPage() {
             {/* ── Mobile header ──────────────────────────────────────── */}
             <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
                 <h2 className="font-bold text-slate-800 text-sm">
-                    {showMobileInbox ? 'Incoming Tickets' : selectedReport?.title || 'Report Details'}
+                    {showMobileInbox
+                        ? (queueTab === 'active' ? 'Active Tickets' : 'Resolved History')
+                        : selectedReport?.title || 'Report Details'}
                 </h2>
                 <button
                     onClick={() => setShowMobileInbox(!showMobileInbox)}
@@ -232,11 +238,43 @@ export default function OfficerDashboardPage() {
                 showMobileInbox ? 'flex' : 'hidden md:flex'
             }`}>
 
+                {/* ── Tab Toggle ─────────────────────────────────────────── */}
+                <div className="px-3 pt-3 pb-2 border-b border-slate-100">
+                    <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner">
+                        <button
+                            onClick={() => setQueueTab('active')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                                queueTab === 'active'
+                                    ? 'bg-white text-indigo-700 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                        >
+                            <Activity size={12} />
+                            Active Issues
+                        </button>
+                        <button
+                            onClick={() => setQueueTab('history')}
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                                queueTab === 'history'
+                                    ? 'bg-white text-emerald-700 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                        >
+                            <History size={12} />
+                            Resolved
+                        </button>
+                    </div>
+                </div>
+
                 {/* Header */}
-                <div className="px-4 py-4 border-b border-slate-200 bg-slate-50 hidden md:block">
-                    <h2 className="font-bold text-slate-800 text-sm">Incoming Tickets</h2>
+                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 hidden md:block">
+                    <h2 className="font-bold text-slate-800 text-sm">
+                        {queueTab === 'active' ? 'Incoming Tickets' : 'Resolved History'}
+                    </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                        {isLoading ? 'Loading…' : `${reports.length} unresolved · sorted by AI score`}
+                        {isLoading
+                            ? 'Loading…'
+                            : `${reports.length} ${queueTab === 'active' ? 'unresolved' : 'resolved'} · sorted by AI score`}
                     </p>
                 </div>
 
@@ -255,7 +293,11 @@ export default function OfficerDashboardPage() {
                     ) : reports.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-2 py-16 text-center px-4">
                             <Inbox size={28} className="text-slate-300" />
-                            <p className="text-xs text-slate-400">No pending reports for your department.</p>
+                            <p className="text-xs text-slate-400">
+                                {queueTab === 'active'
+                                    ? 'No pending reports for your department.'
+                                    : 'No resolved reports found for your department.'}
+                            </p>
                         </div>
                     ) : (
                         reports.map(report => {
@@ -295,6 +337,9 @@ export default function OfficerDashboardPage() {
                                         <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
                                             {formatCategory(report.category)}
                                         </span>
+                                        {queueTab === 'history' && (
+                                            <StatusBadge status={report.status} />
+                                        )}
                                     </div>
                                 </button>
                             )
@@ -410,10 +455,9 @@ export default function OfficerDashboardPage() {
                                     Score Breakdown
                                     <span className="font-normal text-slate-400">(AI-generated factors)</span>
                                 </h3>
-                                <BreakdownBar label="Base Severity" value={bd.base_severity ?? 0} maxPts={30} color="bg-red-400" />
-                                <BreakdownBar label="Community Vouching" value={bd.vouching ?? 0} maxPts={30} color="bg-indigo-400" />
-                                <BreakdownBar label="Proximity to Infra" value={bd.proximity ?? 0} maxPts={20} color="bg-amber-400" />
-                                <BreakdownBar label="Time Escalation" value={bd.time_decay ?? 0} maxPts={20} color="bg-slate-400" />
+                                <BreakdownBar label="Base Severity" value={bd.base_severity ?? 0} maxPts={60} color="bg-red-400" />
+                                <BreakdownBar label="Proximity to Infra" value={bd.proximity ?? 0} maxPts={40} color="bg-amber-400" />
+                                <BreakdownBar label="Community Vouching" value={bd.vouching ?? 0} maxPts={15} color="bg-indigo-400" />
                             </div>
                         )}
 
@@ -469,46 +513,66 @@ export default function OfficerDashboardPage() {
                             </div>
                         </div>
 
-                        {/* ── Status Update Dropdown ───────────────────────── */}
-                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                                <ChevronDown size={15} className="text-slate-500" />
-                                <h3 className="font-bold text-slate-700 text-sm">Update Status</h3>
-                            </div>
-                            <div className="flex flex-col sm:flex-row gap-3">
-                                <select
-                                    value={selectedReport.status || 'pending'}
-                                    onChange={(e) => handleStatusChange(selectedReport.id, e.target.value)}
-                                    disabled={updatingStatus}
-                                    className="flex-1 bg-slate-50 border border-slate-200 text-sm font-bold rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 cursor-pointer"
-                                >
-                                    <option value="pending">⏳ Pending</option>
-                                    <option value="in_progress">🔧 In Progress</option>
-                                    <option value="resolved">✅ Resolved</option>
-                                    <option value="rejected">❌ Rejected</option>
-                                </select>
-                            </div>
-                        </div>
+                        {/* ── Status Update & Actions (hidden for resolved reports) ── */}
+                        {!isResolved ? (
+                            <>
+                                {/* Status Update Dropdown */}
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <ChevronDown size={15} className="text-slate-500" />
+                                        <h3 className="font-bold text-slate-700 text-sm">Update Status</h3>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-3">
+                                        <select
+                                            value={selectedReport.status || 'pending'}
+                                            onChange={(e) => handleStatusChange(selectedReport.id, e.target.value)}
+                                            disabled={updatingStatus}
+                                            className="flex-1 bg-slate-50 border border-slate-200 text-sm font-bold rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 cursor-pointer"
+                                        >
+                                            <option value="pending">⏳ Pending</option>
+                                            <option value="in_progress">🔧 In Progress</option>
+                                            <option value="resolved">✅ Resolved</option>
+                                            <option value="rejected">❌ Rejected</option>
+                                        </select>
+                                    </div>
+                                </div>
 
-                        {/* ── Quick Action Buttons ────────────────────────────── */}
-                        <div className="grid grid-cols-2 gap-3 pb-2">
-                            <button
-                                onClick={() => handleStatusChange(selectedReport.id, 'in_progress')}
-                                disabled={updatingStatus || selectedReport.status === 'in_progress'}
-                                className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:pointer-events-none"
-                            >
-                                <ArrowUpCircle size={16} />
-                                Escalate / In Progress
-                            </button>
-                            <button
-                                onClick={() => handleStatusChange(selectedReport.id, 'resolved')}
-                                disabled={updatingStatus || selectedReport.status === 'resolved'}
-                                className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:pointer-events-none"
-                            >
-                                <CheckCircle2 size={16} />
-                                Mark Resolved
-                            </button>
-                        </div>
+                                {/* Quick Action Buttons */}
+                                <div className="grid grid-cols-2 gap-3 pb-2">
+                                    <button
+                                        onClick={() => handleStatusChange(selectedReport.id, 'in_progress')}
+                                        disabled={updatingStatus || selectedReport.status === 'in_progress'}
+                                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:pointer-events-none"
+                                    >
+                                        <ArrowUpCircle size={16} />
+                                        Escalate / In Progress
+                                    </button>
+                                    <button
+                                        onClick={() => handleStatusChange(selectedReport.id, 'resolved')}
+                                        disabled={updatingStatus || selectedReport.status === 'resolved'}
+                                        className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-semibold text-sm py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:pointer-events-none"
+                                    >
+                                        <CheckCircle2 size={16} />
+                                        Mark Resolved
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            /* ── Resolved Banner ─────────────────────────────── */
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex items-center gap-3">
+                                <div className="bg-emerald-100 rounded-full p-2">
+                                    <CheckCircle2 size={22} className="text-emerald-600" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-emerald-800 text-sm">Issue Resolved</p>
+                                    <p className="text-xs text-emerald-600 mt-0.5">
+                                        {selectedReport.resolved_at
+                                            ? `Closed ${timeAgo(selectedReport.resolved_at)}`
+                                            : 'This issue has been marked as resolved.'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
 
                     </div>
                 )}

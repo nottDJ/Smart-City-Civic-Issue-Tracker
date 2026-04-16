@@ -175,26 +175,89 @@ function scoreTimeDecay(createdAt) {
  * @returns {{ total: number, breakdown: Object }}
  */
 function calculatePriorityScore(report) {
-    const severity = scoreSeverity(report.department_name, report.category);
-    const vouching = scoreVouching(report.vouch_count || 0);
-    const proximity = scoreProximity(report.min_distance_m);
-    const timeFactor = scoreTimeDecay(report.created_at);
+    // AI Scoring Algorithm v3 — Fine-grained scoring
+    const title = report.title || '';
+    const description = report.description || '';
+    const address_text = report.address_text || '';
+    const location = report.location || '';
+    const vouchCount = report.vouch_count || 0;
 
-    const total = Math.round(
-        severity * WEIGHTS.BASE_SEVERITY * 100 +
-        vouching * WEIGHTS.VOUCHING * 100 +
-        proximity * WEIGHTS.PROXIMITY * 100 +
-        timeFactor * WEIGHTS.TIME_DECAY * 100
-    );
+    const textString = (`${title} ${description}`).toLowerCase();
+    const locString = (address_text || location || "").toLowerCase();
+
+    // 1. Text Analysis (Max 60 points)
+    //    Base tier + bonus for each additional keyword match + description detail bonus
+    const criticalKeywords = ['urgent','danger','dangerous','live wire','livewire','spark','sparking','sparks','electrocution','electrocute','electric shock','shock','sewage','sewer','blood','bleeding','fire','fires','burning','burn','explosion','explode','blast','collapse','collapsed','collapsing','hazard','hazardous','massive','critical','emergency','death','dead','dying','fatal','toxic','poison','chemical','gas leak','gasleak','flood','flooding','drown','accident','injured','injury','open manhole','manhole open','manhole','exposed wire','wire exposed','wires','short circuit','shortcircuit','bijli','aag','khoon','khatra','khatarnak','toofan','baarish','barish','pani bhara','bomb','crack in building','building crack','wall crack','roof collapse','cave in','cavein'];
+
+    const mediumKeywords = ['pothole','pot hole','potholes','broken','break','damage','damaged','flickering','flicker','dark','darkness','no light','no lights','blocked','block','blockage','sinkhole','sink hole','leak','leaking','leaks','water leak','pipe burst','pipe leak','burst pipe','clogged','clog','drain block','drain clog','overflow','overflowing','stagnant','standing water','waterlog','waterlogged','fallen tree','tree fallen','tree fall','uprooted','branch','crack','cracked','road damage','road break','footpath broken','pavement','gutter','nala','nali','naali','ganda pani','pani','tuta','toota','tuti','band','light nahi','street light','signal broken','signal','traffic light','road block','cave','ditch','trench','open drain','no water','water supply','supply issue','power cut','power out','no power','outage'];
+
+    const lowKeywords = ['litter','messy','trash','garbage','grass','overgrown','graffiti','minor','dirty','dust','dusty','noise','noisy','smell','stink','stinking','bad smell','ugly','paint','faded','peeling','weed','weeds','bush','bushes','pothol','littering','dumping','dump','junk','debris','rubbish','kachra','kachara','gandagi','ganda','safai','saaf','mitti','dhool','shor','badboo','badbu'];
+
+    // Count keyword matches per tier
+    const countMatches = (keywords) => keywords.filter(kw => textString.includes(kw)).length;
+    const criticalHits = countMatches(criticalKeywords);
+    const mediumHits = countMatches(mediumKeywords);
+    const lowHits = countMatches(lowKeywords);
+
+    // Base score from tier + bonus per extra keyword (1.5 pts each, capped)
+    let baseSeverity = 10;
+    if (criticalHits > 0) {
+        baseSeverity = 48 + Math.min(12, criticalHits * 1.5); // 49.5 to 60
+    } else if (mediumHits > 0) {
+        baseSeverity = 30 + Math.min(10, mediumHits * 1.2);   // 31.2 to 40
+    } else if (lowHits > 0) {
+        baseSeverity = 10 + Math.min(5, lowHits * 0.8);        // 10.8 to 15
+    }
+
+    // Description detail bonus: longer, more detailed reports get up to 5 extra points
+    const wordCount = textString.split(/\s+/).filter(w => w.length > 0).length;
+    const detailBonus = Math.min(5, wordCount * 0.15);
+    baseSeverity = Math.min(60, baseSeverity + detailBonus);
+
+    // 2. Proximity Analysis (Max 40 points)
+    const highProxKeywords = ['hospital','school','college','university','clinic','highway','intersection','main road','mainroad','national highway','state highway','flyover','bridge','overpass','bus stop','busstop','bus stand','railway','rail','metro','station','temple','mosque','church','gurudwara','market','bazaar','bazar','mall','chowk','chowraha','crossing','signal','square','gate'];
+    const midProxKeywords = ['residential','apartment','flat','flats','society','housing','park','garden','playground','complex','suburb','colony','nagar','vihar','enclave','sector','block','lane','gali','galli','mohalla','area','locality','ward','village','gaon'];
+
+    const highProxHits = highProxKeywords.filter(kw => locString.includes(kw)).length;
+    const midProxHits = midProxKeywords.filter(kw => locString.includes(kw)).length;
+
+    let proxScore = 10;
+    if (highProxHits > 0) {
+        proxScore = 32 + Math.min(8, highProxHits * 2.5);  // 34.5 to 40
+    } else if (midProxHits > 0) {
+        proxScore = 15 + Math.min(5, midProxHits * 1.5);    // 16.5 to 20
+    }
+
+    // 3. Vouching Bonus (Max 15 points, logarithmic scale — no rounding)
+    let vouchBonus = 0;
+    if (vouchCount > 0) {
+        vouchBonus = Math.min(15, Math.log(1 + vouchCount) / Math.log(1 + 50) * 15);
+    }
+
+    // 4. Calculate Total — round to 1 decimal, cap at 100
+    let priority_score = parseFloat((baseSeverity + proxScore + vouchBonus).toFixed(1));
+    if (priority_score > 100) priority_score = 100;
+
+    // 5. Determine Severity Label
+    let severity = 'low';
+    if (priority_score >= 80) {
+        severity = 'critical';
+    } else if (priority_score >= 60) {
+        severity = 'high';
+    } else if (priority_score >= 40) {
+        severity = 'medium';
+    }
+
+    console.log(`[AI Scoring] Title: ${title} | Base: ${baseSeverity} | Prox: ${proxScore} | Vouch: ${vouchBonus} (${vouchCount} vouches) | Total: ${priority_score} | Severity: ${severity}`);
 
     return {
-        total: Math.min(100, Math.max(0, total)),
+        total: priority_score,
+        severity,
         breakdown: {
-            base_severity: Math.round(severity * WEIGHTS.BASE_SEVERITY * 100 * 10) / 10,
-            vouching: Math.round(vouching * WEIGHTS.VOUCHING * 100 * 10) / 10,
-            proximity: Math.round(proximity * WEIGHTS.PROXIMITY * 100 * 10) / 10,
-            time_decay: Math.round(timeFactor * WEIGHTS.TIME_DECAY * 100 * 10) / 10,
-        },
+            base_severity: baseSeverity,
+            proximity: proxScore,
+            vouching: vouchBonus,
+        }
     };
 }
 
@@ -271,6 +334,7 @@ async function getReportsSortedByPriority(filters = {}) {
       r.description,
       r.category,
       r.status,
+      r.severity,
       r.priority_score         AS stored_priority,
       r.vouch_count,
       r.ward_number,
@@ -316,15 +380,14 @@ async function getReportsSortedByPriority(filters = {}) {
 
     // ── Execute ─────────────────────────────────────────────────────────────
     const { rows } = await query(sql, params);
-
     // ── Compute dynamic priority score for each row in JS ───────────────────
     const scoredReports = rows.map(row => {
-        const { total, breakdown } = calculatePriorityScore({
-            department_name: row.department_name,
-            category: row.category,
-            vouch_count: row.vouch_count,
-            min_distance_m: row.min_distance_m !== null ? parseFloat(row.min_distance_m) : null,
-            created_at: row.created_at,
+        const { total, severity, breakdown } = calculatePriorityScore({
+            title: row.title,
+            description: row.description || '',
+            address_text: row.address_text || '',
+            location: '',
+            vouch_count: row.vouch_count || 0,
         });
 
         return {
@@ -333,6 +396,7 @@ async function getReportsSortedByPriority(filters = {}) {
             description: row.description,
             category: row.category,
             status: row.status,
+            severity: severity,
             vouch_count: row.vouch_count,
             priority_score: total,
             priority_breakdown: breakdown,

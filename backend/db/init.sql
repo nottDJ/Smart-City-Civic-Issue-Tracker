@@ -57,11 +57,15 @@ CREATE TABLE IF NOT EXISTS departments (
     created_at    TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
--- Seed with common municipal departments
+-- Seed with official municipal departments
 INSERT INTO departments (name, description) VALUES
+    ('Electricity',             'Electrical infrastructure, power outages, and street lighting'),
+    ('Water & Sanitation',      'Water supply, leaks, pipe bursts, and sanitation services'),
+    ('Roads & Highways',        'Roads, footpaths, potholes, and highway maintenance'),
+    ('Solid Waste Management',  'Garbage collection, waste disposal, and recycling'),
+    ('Public Safety',           'Public safety, law enforcement support, and emergency services'),
     ('Public Works',            'Roads, footpaths, potholes, drainage'),
     ('Street Lighting',         'Street lights and electrical infrastructure'),
-    ('Solid Waste Management',  'Garbage collection and waste disposal'),
     ('Water Supply',            'Water leaks, pipe bursts, water quality'),
     ('Sewage & Sanitation',     'Sewage overflow, blocked drains'),
     ('Town Planning',           'Illegal construction & encroachments'),

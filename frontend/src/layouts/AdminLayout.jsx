@@ -24,18 +24,8 @@ export default function AdminLayout() {
                         </div>
                     </div>
 
-                    {/* Desktop nav */}
+                    {/* Desktop nav (removed City Dashboard btn) */}
                     <nav className="hidden md:flex items-center gap-1">
-                        <NavLink
-                            to="/admin/dashboard"
-                            className={({ isActive }) =>
-                                `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
-                                }`
-                            }
-                        >
-                            <BarChart3 size={16} />
-                            <span>City Dashboard</span>
-                        </NavLink>
                     </nav>
 
                     <div className="flex items-center gap-2">
@@ -57,17 +47,6 @@ export default function AdminLayout() {
                 {/* Mobile dropdown menu */}
                 {menuOpen && (
                     <div className="md:hidden mt-3 border-t border-slate-700 pt-3 pb-1 space-y-1">
-                        <NavLink
-                            to="/admin/dashboard"
-                            onClick={() => setMenuOpen(false)}
-                            className={({ isActive }) =>
-                                `flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
-                                }`
-                            }
-                        >
-                            <BarChart3 size={16} />
-                            <span>City Dashboard</span>
-                        </NavLink>
                         <button
                             onClick={handleLogout}
                             className="flex items-center gap-2 px-4 py-2.5 w-full text-left rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"

@@ -7,6 +7,7 @@ const multer = require('multer');
 const { query } = require('../db');
 const jwt = require('jsonwebtoken');
 const { classifyIssue } = require('../services/aiClassification');
+const { calculatePriorityScore } = require('../services/priorityScoring');
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key_change_in_prod';
@@ -53,17 +54,42 @@ const upload = multer({
     },
 });
 
-// ─── Category mapping from AI department → DB enum ────────────────────────────
-const DEPT_TO_CATEGORY = {
-    'Public Works': 'pothole',
-    'Street Lighting': 'street_light',
-    'Solid Waste Management': 'garbage',
-    'Water Supply': 'water_leak',
-    'Sewage & Sanitation': 'sewage',
-    'Town Planning': 'illegal_construction',
-    'Parks & Horticulture': 'tree_hazard',
-    'General Administration': 'other',
-};
+// ─── Smart Category Assignment ────────────────────────────────────────────────
+// Uses AI department + keyword analysis of title/description for accuracy.
+function classifyCategory(department, title, description) {
+    const text = (`${title || ''} ${description || ''}`).toLowerCase();
+
+    // Keyword → category mapping (checked first for precision)
+    const KEYWORD_RULES = [
+        { pattern: /(pothole|pot hole|road damage|road crack|road break|footpath|pavement|speed bump)/, category: 'pothole' },
+        { pattern: /(street light|streetlight|lamp post|light pole|flickering light|dark street|no light|light out|bulb)/, category: 'street_light' },
+        { pattern: /(garbage|trash|litter|waste|rubbish|kachra|dump|debris|dustbin|bin overflow)/, category: 'garbage' },
+        { pattern: /(water leak|pipe burst|pipe leak|water supply|no water|tap|water main|water line|water break|water tanker)/, category: 'water_leak' },
+        { pattern: /(sewage|sewer|drain|drainage|manhole|nala|naali|gutter|clogged drain|overflow drain|ganda pani|sewerage)/, category: 'sewage' },
+        { pattern: /(illegal construction|encroachment|unauthorized|building violation|zoning)/, category: 'illegal_construction' },
+        { pattern: /(tree|branch|fallen tree|uprooted|overgrown|bush|shrub|park damage|garden)/, category: 'tree_hazard' },
+        { pattern: /(noise|noise pollution|loud|honking|loudspeaker|music)/, category: 'noise_pollution' },
+        { pattern: /(encroach|footpath block|vendor|illegal parking|hawker)/, category: 'encroachment' },
+    ];
+
+    for (const rule of KEYWORD_RULES) {
+        if (rule.pattern.test(text)) return rule.category;
+    }
+
+    // Fallback: department-based default
+    const DEPT_DEFAULTS = {
+        'Public Works': 'pothole',
+        'Street Lighting': 'street_light',
+        'Solid Waste Management': 'garbage',
+        'Water Supply': 'water_leak',
+        'Sewage & Sanitation': 'sewage',
+        'Town Planning': 'illegal_construction',
+        'Parks & Horticulture': 'tree_hazard',
+        'General Administration': 'other',
+    };
+
+    return DEPT_DEFAULTS[department] || 'other';
+}
 
 // =============================================================================
 // POST /api/reports
@@ -81,7 +107,7 @@ const DEPT_TO_CATEGORY = {
 
 router.post('/', authenticateToken, upload.single('media'), async (req, res, next) => {
     try {
-        const { title, description, lat, lng } = req.body;
+        const { title, description, lat, lng, address_text } = req.body;
 
         // ── Validation ────────────────────────────────────────────────────────
         const missingFields = [];
@@ -107,6 +133,15 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
         const classification = await classifyIssue(title.trim(), description?.trim());
         console.log('[Reports] AI result:', JSON.stringify(classification));
 
+        // Calculate Priority Score and Severity locally
+        const { total: calcScore, severity: calcSeverity } = calculatePriorityScore({
+            title: title.trim(),
+            description: description?.trim() || '',
+            address_text: address_text?.trim() || '',
+            location: '',
+            vouch_count: 0,
+        });
+
         // Look up department_id from the AI's department string
         const { rows: deptRows } = await query(
             'SELECT id FROM departments WHERE name = $1',
@@ -115,8 +150,7 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
         const department_id = deptRows.length > 0 ? deptRows[0].id : null;
 
         // Map AI department to the closest DB category enum
-        const category = DEPT_TO_CATEGORY[classification.department] || 'other';
-        const severity = classification.severity; // already validated in service
+        const category = classifyCategory(classification.department, title.trim(), description?.trim());
 
         // ── Optional media path ───────────────────────────────────────────────
         const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;
@@ -126,16 +160,16 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
 
         const sql = `
             INSERT INTO reports
-                (title, description, category, severity, department_id,
-                 location, status, multimedia_urls, reported_by)
+                (title, description, category, severity, priority_score, department_id,
+                 location, status, multimedia_urls, reported_by, address_text)
             VALUES
-                ($1, $2, $3, $4, $5,
+                ($1, $2, $3, $4, $11, $5,
                  ST_SetSRID(ST_MakePoint($6, $7), 4326),
                  'pending',
-                 $8, $9)
+                 $8, $9, $10)
             RETURNING
-                id, title, description, category, severity, department_id, status,
-                multimedia_urls,
+                id, title, description, category, severity, priority_score, department_id, status,
+                multimedia_urls, address_text,
                 ST_AsGeoJSON(location)::json AS location,
                 created_at;
         `;
@@ -146,12 +180,14 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
             title.trim(),
             description?.trim() || null,
             category,
-            severity,
+            calcSeverity, // use our calculated severity
             department_id,
             lngNum,   // PostGIS MakePoint takes (lng, lat) — X then Y
             latNum,
             mediaArray,
             reported_by,
+            address_text?.trim() || null,
+            calcScore
         ]);
 
         // Attach the human-readable department name to the response
@@ -159,7 +195,7 @@ router.post('/', authenticateToken, upload.single('media'), async (req, res, nex
             ...rows[0],
             media_url: rows[0].multimedia_urls?.[0] || null,
             ai_department: classification.department,
-            ai_severity: classification.severity,
+            ai_severity: calcSeverity,
         };
 
         return res.status(201).json({
@@ -205,8 +241,8 @@ router.get('/', async (req, res, next) => {
         const sql = `
             SELECT
                 r.id, r.title, r.description, r.category, r.status,
-                r.severity, r.department_id, d.name AS department_name,
-                r.multimedia_urls, r.vouch_count,
+                r.severity, r.priority_score, r.department_id, d.name AS department_name,
+                r.multimedia_urls, r.vouch_count, r.address_text,
                 ST_AsGeoJSON(r.location)::json AS location,
                 r.created_at
             FROM reports r
@@ -238,7 +274,7 @@ router.get('/me', authenticateToken, async (req, res, next) => {
             SELECT
                 r.id, r.title, r.description, r.category, r.status,
                 r.severity, r.department_id, d.name AS department_name,
-                r.multimedia_urls, r.vouch_count,
+                r.multimedia_urls, r.vouch_count, r.address_text,
                 ST_AsGeoJSON(r.location)::json AS location,
                 r.created_at
             FROM reports r
@@ -267,7 +303,7 @@ router.get('/my-vouches', authenticateToken, async (req, res, next) => {
             SELECT
                 r.id, r.title, r.description, r.category, r.status,
                 r.severity, r.department_id, d.name AS department_name,
-                r.multimedia_urls, r.vouch_count,
+                r.multimedia_urls, r.vouch_count, r.address_text,
                 ST_AsGeoJSON(r.location)::json AS location,
                 r.created_at,
                 rv.created_at AS vouched_at

@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import {
     Camera, MapPin, Send,
-    Loader2, AlertCircle, CheckCircle2,
+    Loader2, CheckCircle2,
     X, FileAudio, FileVideo, Search, Brain, Sparkles
 } from 'lucide-react'
 import { BACKEND_URL } from '../../config'
@@ -23,10 +23,12 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 const API_BASE = BACKEND_URL;
 
-function LocationPicker({ setLocation }) {
+function LocationPicker({ setLocation, onLocationPick }) {
     useMapEvents({
         click(e) {
-            setLocation({ lat: e.latlng.lat.toFixed(5), lng: e.latlng.lng.toFixed(5) })
+            const loc = { lat: e.latlng.lat.toFixed(5), lng: e.latlng.lng.toFixed(5) }
+            setLocation(loc)
+            if (onLocationPick) onLocationPick(loc)
         }
     })
     return null
@@ -75,6 +77,23 @@ export default function ReportIssuePage() {
     const [showMap, setShowMap] = useState(false)
     const [addressInput, setAddressInput] = useState('')
     const [isSearching, setIsSearching] = useState(false)
+    const [addressText, setAddressText] = useState('')
+
+    // ── Reverse geocode helper ──────────────────────────────────────────────
+    async function reverseGeocode(lat, lng) {
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+            )
+            const data = await res.json()
+            if (data && data.display_name) {
+                setAddressText(data.display_name)
+                setAddressInput(data.display_name)
+            }
+        } catch {
+            // Silently fail — address is optional enrichment
+        }
+    }
 
     async function handleManualSearch(e) {
         if (e) e.preventDefault()
@@ -82,13 +101,14 @@ export default function ReportIssuePage() {
 
         setIsSearching(true)
         try {
-            const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(addressInput))
+            const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=' + encodeURIComponent(addressInput))
             const data = await res.json()
 
             if (data && data.length > 0) {
                 const lat = parseFloat(data[0].lat).toFixed(5)
                 const lng = parseFloat(data[0].lon).toFixed(5)
                 setLocation({ lat, lng })
+                setAddressText(data[0].display_name || addressInput)
                 setShowMap(true)
                 toast.success("Location found!")
             } else {
@@ -115,10 +135,12 @@ export default function ReportIssuePage() {
 
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                setLocation({
+                const loc = {
                     lat: pos.coords.latitude.toFixed(5),
                     lng: pos.coords.longitude.toFixed(5),
-                })
+                }
+                setLocation(loc)
+                reverseGeocode(loc.lat, loc.lng)
                 setLocationLoading(false)
             },
             (err) => {
@@ -163,6 +185,7 @@ export default function ReportIssuePage() {
         body.append('description', form.description.trim())
         body.append('lat', location.lat)
         body.append('lng', location.lng)
+        if (addressInput || addressText) body.append('address_text', addressInput || addressText)
         if (mediaFile) body.append('media', mediaFile)
 
         setIsSubmitting(true)
@@ -189,6 +212,7 @@ export default function ReportIssuePage() {
             clearMedia()
             setLocation(null)
             setLocationError(null)
+            setAddressText('')
 
         } catch (err) {
             const errorMsg = err.message || 'Failed to submit. Please try again.'
@@ -220,6 +244,8 @@ export default function ReportIssuePage() {
         }
         return null
     }
+
+
 
     return (
         <div className="min-h-screen bg-[#FAFAFA] pb-24 font-sans text-slate-900 selection:bg-indigo-500/30">
@@ -310,6 +336,7 @@ export default function ReportIssuePage() {
                             onSubmit={handleSubmit}
                             className="bg-white rounded-[2rem] shadow-[0_12px_40px_rgba(0,0,0,0.04)] border border-black/[0.03] p-6 lg:p-8 space-y-8"
                         >
+
                             {/* Title */}
                             <div className="space-y-2">
                                 <label className="text-xs font-bold tracking-wide uppercase text-slate-500 ml-1">Title</label>
@@ -442,6 +469,14 @@ export default function ReportIssuePage() {
                                     )}
                                 </button>
 
+                                {/* Display resolved address */}
+                                {addressText && (
+                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 flex items-start gap-2.5">
+                                        <MapPin size={14} className="text-indigo-500 mt-0.5 shrink-0" />
+                                        <p className="text-xs text-slate-600 font-medium leading-relaxed">{addressText}</p>
+                                    </div>
+                                )}
+
                                 <div className="flex items-center gap-4 py-1 opacity-50">
                                     <div className="flex-1 h-px bg-slate-400"></div>
                                     <span className="text-[10px] font-black tracking-widest uppercase text-slate-500">OR</span>
@@ -474,7 +509,7 @@ export default function ReportIssuePage() {
                                                 attribution='&copy; OpenStreetMap'
                                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                             />
-                                            <LocationPicker setLocation={setLocation} />
+                                            <LocationPicker setLocation={setLocation} onLocationPick={(loc) => reverseGeocode(loc.lat, loc.lng)} />
                                             <MapFlyTo location={location} />
                                             {location && <Marker position={[location.lat, location.lng]} />}
                                         </MapContainer>
