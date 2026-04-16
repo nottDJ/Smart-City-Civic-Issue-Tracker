@@ -235,7 +235,7 @@ function calculatePriorityScore(report) {
     }
 
     // 4. Calculate Total — round to 1 decimal, cap at 100
-    let priority_score = parseFloat((baseSeverity + proxScore + vouchBonus).toFixed(1));
+    let priority_score = Math.round(baseSeverity + proxScore + vouchBonus);
     if (priority_score > 100) priority_score = 100;
 
     // 5. Determine Severity Label
