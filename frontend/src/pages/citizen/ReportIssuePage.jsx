@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import {
     Camera, MapPin, Send,
     Loader2, CheckCircle2,
-    X, FileAudio, FileVideo, Search, Brain, Sparkles
+    X, FileAudio, FileVideo, Search, Brain, Sparkles, AlertCircle
 } from 'lucide-react'
 import { BACKEND_URL } from '../../config'
 import toast from 'react-hot-toast'
